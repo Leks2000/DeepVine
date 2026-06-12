@@ -18,7 +18,7 @@ export class Player {
     this.keys = {};
     this.locked = false;
     this.raycaster = new THREE.Raycaster();
-    this.raycaster.far = 2.8;
+    this.raycaster.far = 4.2;
     this.focus = null;
     this.dragging = null;
     this.holding = null;
@@ -88,12 +88,25 @@ export class Player {
   }
 
   _updateLadder(dt) {
+    // лестница → торпедный отсек (нос)
     if (this.pos.x > 1.0 && this.pos.z > -11.8 && this.pos.z < -9.5) {
       if (this.keys['KeyS']) this.pos.y = Math.max(EYE_LOWER, this.pos.y - dt * 2.5);
       if (this.keys['KeyW']) this.pos.y = Math.min(EYE_UPPER, this.pos.y + dt * 2.5);
     }
+    // лестница → машинный отсек (корма)
+    if (this.pos.x < -1.0 && this.pos.z > 13.5 && this.pos.z < 16.5) {
+      if (this.keys['KeyS']) this.pos.y = Math.max(EYE_LOWER, this.pos.y - dt * 2.5);
+      if (this.keys['KeyW']) this.pos.y = Math.min(EYE_UPPER, this.pos.y + dt * 2.5);
+    }
     if (this._onLowerDeck() && this.pos.y < 0.9) this.pos.y = EYE_LOWER;
-    else if (!this._onLowerDeck() && this.pos.y < 1.2 && this.pos.y > 0.9) this.pos.y = EYE_UPPER;
+    else if (this._onLowerEngine() && this.pos.y < 0.9) this.pos.y = EYE_LOWER;
+    else if (!this._onLowerDeck() && !this._onLowerEngine() && this.pos.y < 1.2 && this.pos.y > 0.9) {
+      this.pos.y = EYE_UPPER;
+    }
+  }
+
+  _onLowerEngine() {
+    return this.pos.z >= 14 && this.pos.z < 22 && this.pos.y < 1.0;
   }
 
   update(dt) {

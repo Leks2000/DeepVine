@@ -111,21 +111,24 @@ function buildHullInterior() {
     addCollider(new THREE.Vector3(w / 2, 0, c.z0), new THREE.Vector3(w / 2 + 0.2, h, c.z1));
   }
 
-  // --- НОС МОСТИКА: панорамный иллюминатор (вид вперёд) ---
+  // --- НОС МОСТИКА: широкий лобовой иллюминатор (~180° обзор) ---
   {
-    const Z = z0 - 0.1;
-    box(w, 0.55, 0.2, MAT.bulk, 0, 0.275, Z, null, true);
-    box(w, h - 2.65, 0.2, MAT.bulk, 0, (h + 2.65) / 2, Z, null, true);
-    box((w - 2.8) / 2, 2.1, 0.2, MAT.bulk, -(2.8 / 2 + (w - 2.8) / 4), 1.6, Z, null, true);
-    box((w - 2.8) / 2, 2.1, 0.2, MAT.bulk,  (2.8 / 2 + (w - 2.8) / 4), 1.6, Z, null, true);
-    const glass = new THREE.Mesh(new THREE.CircleGeometry(1.15, 28), MAT.glass);
-    glass.position.set(0, 1.6, Z + 0.02); glass.renderOrder = 5;
+    const Z = z0 - 0.08;
+    const winH = 1.55, winY = 1.55;
+    box(w, 0.42, 0.18, MAT.bulk, 0, 0.21, Z, null, true);                    // низкий нос
+    box(w, h - winY - 0.55, 0.18, MAT.bulk, 0, (h + winY + 0.55) / 2, Z, null, true); // верх
+    // панорамное стекло на всю ширину
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(w - 0.35, winH, 0.07), MAT.glass);
+    glass.position.set(0, winY, Z + 0.04); glass.renderOrder = 5;
     G.scene.add(glass);
     G.bridgeGlass = glass;
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.18, 0.09, 10, 30), MAT.brass);
-    rim.position.set(0, 1.6, Z + 0.05); G.scene.add(rim);
-    const sCmd = makeSign('COMMAND', 1.4, 0.28);
-    sCmd.position.set(0, 2.85, z0 + 0.2); G.scene.add(sCmd);
+    box(w - 0.2, 0.1, 0.12, MAT.brass, 0, winY - winH / 2 - 0.05, Z + 0.02);
+    box(w - 0.2, 0.1, 0.12, MAT.brass, 0, winY + winH / 2 + 0.05, Z + 0.02);
+    for (const sx of [-1, 1]) {
+      box(0.12, winH + 0.1, 0.12, MAT.brass, sx * (w / 2 - 0.06), winY, Z + 0.02);
+    }
+    const sCmd = makeSign('COMMAND · ОБЗОР ВПЕРЁД', 2.4, 0.26);
+    sCmd.position.set(0, 2.75, z0 + 1.5); G.scene.add(sCmd);
   }
 
   // --- НИЖНЯЯ ПАЛУБА: торпедный отсек (под мостиком) ---
@@ -146,6 +149,29 @@ function buildHullInterior() {
     const sTorp2 = makeSign('TORPEDO', 1.2, 0.26, '#0d1418', '#80d8ff');
     sTorp2.position.set(0, -0.35, tzc); G.scene.add(sTorp2);
     G.lowerDeckZ = { z0: tz0, z1: tz1 };
+  }
+
+  // --- НИЖНЯЯ ПАЛУБА: машинный отсек (двигатели) ---
+  {
+    const ez0 = 14, ez1 = 22, ezc = (ez0 + ez1) / 2, elen = ez1 - ez0;
+    box(w - 0.4, 0.15, elen, MAT.floor, 0, -1.05, ezc);
+    box(0.2, 1.0, elen, MAT.hull, -w / 2 + 0.1, -0.55, ezc, null, true);
+    box(0.2, 1.0, elen, MAT.hull,  w / 2 - 0.1, -0.55, ezc, null, true);
+    // люк/лестница с верхней палубы
+    for (let i = 0; i < 6; i++) {
+      const step = box(0.75, 0.08, 0.35, MAT.brass, -2.1, 0.15 - i * 0.2, ez0 + 0.3 + i * 0.35);
+      step.rotation.x = 0.35;
+    }
+    const sEng = makeSign('↓ ENGINE ROOM', 1.4, 0.28);
+    sEng.position.set(0, 2.55, ez0 + 0.1); sEng.rotation.y = Math.PI;
+    G.scene.add(sEng);
+    const sEng2 = makeSign('ENGINE ROOM', 1.3, 0.26, '#0d1418', '#80d8ff');
+    sEng2.position.set(0, -0.35, ezc); G.scene.add(sEng2);
+    G.lowerEngineZ = { z0: ez0, z1: ez1 };
+    // проём в полу верхнего машинного отсека
+    const grate = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 1.6),
+      new THREE.MeshStandardMaterial({ color: 0x455a64, metalness: 0.8, roughness: 0.5 }));
+    grate.position.set(-2.0, 0.02, ez0 + 1.2); G.scene.add(grate);
   }
 
   // --- КОРМОВОЙ ТОРЕЦ с проёмом в шлюз ---
@@ -261,26 +287,18 @@ function buildLights() {
 function buildProps() {
   const w = HULL.w;
 
-  // === ТОРПЕДНЫЙ (нижняя палуба): аппараты по бокам, проход по центру ===
   const ly = -0.55;
-  for (const x of [-2.0, 2.0]) {
-    cyl(0.35, 2.2, MAT.hull, x, ly, -15, null, 0, Math.PI / 2);
-    addCollider(new THREE.Vector3(x - 0.45, -1.1, -16.5), new THREE.Vector3(x + 0.45, 0, -13.5));
-  }
-  cyl(0.22, 2.8, MAT.dark, -2.3, ly, -14, null, 0, Math.PI / 2);
-  cyl(0.22, 2.8, MAT.dark, 2.3, ly, -14, null, 0, Math.PI / 2);
 
-  // === МОСТИК: консоль РАЗДЕЛЕНА — проход к торпедному по центру ===
+  // === МОСТИК: консоли по бокам, центр свободен для обзора вперёд ===
   for (const sx of [-1, 1]) {
-    box(1.9, 1.0, 0.9, MAT.dark, sx * 1.65, 0.5, -9.2, null, true);
-    box(1.9, 0.55, 0.7, MAT.bulk, sx * 1.65, 1.25, -9.35);
-    const scr = box(1.05, 0.62, 0.06, MAT.screenOn, sx * 1.65, 1.55, -9.05);
-    scr.rotation.x = -0.25;
+    box(1.5, 0.85, 0.75, MAT.dark, sx * 2.0, 0.45, -8.5, null, true);
+    box(1.5, 0.5, 0.65, MAT.bulk, sx * 2.0, 1.15, -8.65);
+    const scr = box(0.95, 0.55, 0.06, MAT.screenOn, sx * 2.0, 1.42, -8.35);
+    scr.rotation.x = -0.2;
   }
-  // боковые столики
-  box(1.4, 0.9, 0.7, MAT.dark, -2.2, 0.45, -5, null, true);
-  box(1.4, 0.9, 0.7, MAT.dark,  2.2, 0.45, -5, null, true);
-  box(1.1, 0.03, 0.55, MAT.yellow, -2.2, 0.92, -5); // карта
+  // центральный штурвалный пост (не блокирует окно)
+  box(1.2, 0.9, 0.55, MAT.dark, 0, 0.45, -7.8, null, true);
+  box(1.1, 0.03, 0.5, MAT.yellow, 0, 0.92, -7.8);
 
   // === ЖИЛОЙ: койки, стол, шкафы ===
   for (const [x, z] of [[-2.3, 0.5], [-2.3, 3.5]]) {
@@ -306,17 +324,31 @@ function buildProps() {
   }
   box(2.4, 1.6, 0.3, MAT.dark, 2.85, 1.5, 10, null, true);
 
-  // === МАШИННЫЙ: дизели, эл.щит, верстак ===
-  for (const x of [-1.8, 1.8]) {
-    box(1.6, 1.4, 3.0, MAT.dark, x, 0.7, 17.5, null, true);
-    for (let i = 0; i < 4; i++) cyl(0.16, 0.5, MAT.brass, x - 0.5 + i * 0.34, 1.55, 17.5);
+  // === МАШИННЫЙ (верх): только проход и люк вниз ===
+  box(1.2, 0.08, 1.6, MAT.brass, -2.0, 0.04, 15.2);
+
+  // === МАШИННЫЙ (низ): дизели + место для щита ===
+  const ely = -0.55;
+  for (const x of [-2.1, 2.1]) {
+    box(1.2, 1.2, 2.6, MAT.dark, x, ely, 18, null, true);
+    for (let i = 0; i < 3; i++) cyl(0.14, 0.45, MAT.brass, x - 0.35 + i * 0.35, ely + 0.75, 18);
   }
   G.engineBlocks = true;
-  // электрощит (правая стена, ближе к носу отсека) — органы в controls.js
-  box(1.6, 1.8, 0.25, MAT.dark, 2.85, 1.5, 15.2, null, true);
-  const sEl = makeSign('ЭЛЕКТРОЩИТ', 1.2, 0.26);
-  sEl.position.set(2.72, 2.6, 15.2); sEl.rotation.y = -Math.PI / 2;
-  G.scene.add(sEl);
+  // пульт двигателя — крупная панель в центре нижнего машинного (controls.js)
+  const panelBg = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.5, 0.12), MAT.dark);
+  panelBg.position.set(0, ely + 0.85, 16.2); G.scene.add(panelBg);
+  const sEl = makeSign('⚡ ЭЛЕКТРОЩИТ / ДВИГАТЕЛЬ', 1.6, 0.3);
+  sEl.position.set(0, ely + 1.55, 16.14); G.scene.add(sEl);
+
+  // === ТОРПЕДНЫЕ АППАРАТЫ (низ, нос) — управление в controls.js ===
+  for (const x of [-2.0, 2.0]) {
+    cyl(0.38, 2.2, MAT.hull, x, ly, -15.5, null, 0, Math.PI / 2);
+    addCollider(new THREE.Vector3(x - 0.42, -1.1, -16.8), new THREE.Vector3(x + 0.42, 0.2, -14.2));
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.14, 16), MAT.brass);
+    cap.position.set(x, ly, -14.3); cap.rotation.x = Math.PI / 2; G.scene.add(cap);
+  }
+  cyl(0.2, 2.5, MAT.dark, -2.35, ly, -13.5, null, 0, Math.PI / 2);
+  cyl(0.2, 2.5, MAT.dark, 2.35, ly, -13.5, null, 0, Math.PI / 2);
 }
 
 // ---------- ПОДВОДНЫЙ МИР (виден через иллюминаторы) ----------

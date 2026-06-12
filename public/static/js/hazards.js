@@ -393,7 +393,7 @@ export class Hazards {
 
       const total = this.fires.length + this.leaks.length + this.shorts.length + this.warnings.length;
       if (total < 4 && this.hazardPressure > 35) {
-        const chance = (this.hazardPressure - 30) * 0.0008 * dt * (1 + sim.depth / 200);
+        const chance = (this.hazardPressure - 45) * 0.00025 * dt * (1 + sim.depth / 300);
         if (Math.random() < chance) {
           const comp = this._pickComp();
           const r = Math.random();

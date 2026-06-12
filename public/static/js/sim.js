@@ -130,7 +130,7 @@ export class Sim {
     // --- реактор: тепло и генерация ---
     if (this.reactorOn) {
       const gen = 5;                       // генерация
-      const heatUp = 2.2 + this.rpm * 4 - this.cooling * 5.5;
+      const heatUp = 1.4 + this.rpm * 3 - this.cooling * 8;
       this.reactorHeat = Math.max(20, Math.min(120, this.reactorHeat + heatUp * dt));
       // перегрев реактора > 100 — аварийная остановка
       if (this.reactorHeat >= 118) {

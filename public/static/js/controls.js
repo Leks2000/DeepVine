@@ -53,7 +53,10 @@ function makeButton(x, y, z, { label, color = MAT.green, onPress, rotY = 0, canU
   G.scene.add(grp);
   registerInteractable({
     mesh: grp,
-    hint: () => `${label} — [E] нажать`,
+    hint: () => {
+      if (canUse && !canUse()) return `${label} — сейчас недоступно (проверьте предыдущий шаг)`;
+      return `${label} — [E] нажать`;
+    },
     canUse: () => !canUse || canUse(),
     onPress() {
       cap.position.z = 0.01;
@@ -259,39 +262,45 @@ function makeIndicator(x, y, z, { label, rotY = 0 }) {
   }};
 }
 
-// ---------- ЭЛЕКТРОЩИТ: рубильник → шина → пуск/стоп ----------
+// ---------- ЭЛЕКТРОЩИТ: центральная панель (нижний машинный отсек) ----------
 function makeEnginePanel(sim) {
-  const px = 2.66, pz = 15.2;
-  const breakerLed = makeIndicator(px, 2.35, pz, { rotY: -Math.PI / 2 });
-  const busLed = makeIndicator(px, 2.05, pz, { rotY: -Math.PI / 2 });
-  const engineLed = makeIndicator(px, 1.75, pz, { rotY: -Math.PI / 2 });
+  // Панель лицом к проходу (игрок смотрит с носа, кнопки на −Z)
+  const cx = 0, cz = 16.12;
+  const cy = 0.35;
+  const face = Math.PI;
 
-  const breakerTog = makeToggle(px - 0.35, 2.35, pz, {
-    label: 'ГЛАВНЫЙ РУБИЛЬНИК', rotY: -Math.PI / 2,
+  const breakerLed = makeIndicator(cx + 0.55, cy + 0.55, cz, { rotY: face });
+  const busLed = makeIndicator(cx + 0.55, cy + 0.2, cz, { rotY: face });
+  const engineLed = makeIndicator(cx + 0.55, cy - 0.15, cz, { rotY: face });
+
+  makeToggle(cx - 0.15, cy + 0.55, cz, {
+    label: '① ГЛАВНЫЙ РУБИЛЬНИК', rotY: face,
     onChange(on) {
       sim.setBreaker(on);
-      if (on) { G.sfx.breakerOn(); G.hud.log('⚡ Главный рубильник ВКЛ.', 'ok'); }
-      else { G.sfx.breakerOff(); G.hud.log('⚡ Главный рубильник ВЫКЛ.', ''); }
+      if (on) { G.sfx.breakerOn(); G.hud.log('⚡ Рубильник ВКЛ. Теперь: ПОДАЧА ПИТАНИЯ.', 'ok'); }
+      else { G.sfx.breakerOff(); G.hud.log('⚡ Рубильник ВЫКЛ.', ''); }
       breakerLed.setState(on ? 'on' : 'off');
       if (!on) { busLed.setState('off'); engineLed.setState('off'); }
     },
   });
 
-  makeButton(px - 0.35, 2.05, pz, {
-    label: 'ПОДАЧА ПИТАНИЯ НА ШИНУ', rotY: -Math.PI / 2,
+  makeButton(cx - 0.15, cy + 0.2, cz, {
+    label: '② ПОДАЧА ПИТАНИЯ НА ШИНУ', rotY: face,
     color: new THREE.MeshStandardMaterial({ color: 0x1565c0 }),
     canUse: () => sim.breaker,
     onPress() {
       const r = sim.powerBus();
-      if (r === 'ok') { G.sfx.buttonOk(); busLed.setState('on'); G.hud.log('🔋 Шина питания под напряжением.', 'ok'); }
-      else if (r === 'no-charge') { G.sfx.buttonErr(); G.hud.hintFlash('Недостаточно заряда! Запустите реактор.'); }
+      if (r === 'ok') {
+        G.sfx.buttonOk(); busLed.setState('on');
+        G.hud.log('🔋 Шина под напряжением. Теперь: ПУСК ДВИГАТЕЛЯ.', 'ok');
+      } else if (r === 'no-charge') { G.sfx.buttonErr(); G.hud.hintFlash('Мало заряда! Сначала запустите реактор (1→2→3).'); }
       else if (r === 'already') G.hud.hintFlash('Шина уже под напряжением.');
-      else G.hud.hintFlash('Сначала включите главный рубильник!');
+      else G.hud.hintFlash('Сначала включите рубильник (①)!');
     },
   });
 
-  makeButton(px - 0.35, 1.75, pz, {
-    label: 'ПУСК ДВИГАТЕЛЯ', rotY: -Math.PI / 2,
+  makeButton(cx - 0.15, cy - 0.15, cz, {
+    label: '③ ПУСК ДВИГАТЕЛЯ', rotY: face,
     color: MAT.green,
     canUse: () => sim.busPowered && sim.engineState === 'off',
     onPress() {
@@ -299,15 +308,15 @@ function makeEnginePanel(sim) {
       if (r === 'ok') {
         G.sfx.engineCrank();
         engineLed.setState('warn');
-        G.hud.log('🔧 Запуск двигателя…', '');
-      } else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину!');
-      else if (r === 'no-charge') G.hud.hintFlash('Недостаточно заряда для пуска!');
-      else G.hud.hintFlash('Двигатель уже работает или запускается.');
+        G.hud.log('🔧 Запуск двигателя… (~3 сек)', '');
+      } else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину (②)!');
+      else if (r === 'no-charge') G.hud.hintFlash('Недостаточно заряда!');
+      else G.hud.hintFlash('Двигатель уже работает.');
     },
   });
 
-  makeButton(px - 0.35, 1.45, pz, {
-    label: 'ОСТАНОВ ДВИГАТЕЛЯ', rotY: -Math.PI / 2,
+  makeButton(cx - 0.15, cy - 0.5, cz, {
+    label: '④ ОСТАНОВ ДВИГАТЕЛЯ', rotY: face,
     color: MAT.red,
     canUse: () => sim.engineState === 'on' || sim.engineState === 'starting',
     onPress() {
@@ -322,13 +331,49 @@ function makeEnginePanel(sim) {
     },
   });
 
-  return { breakerLed, busLed, engineLed, breakerTog, update() {
+  return { breakerLed, busLed, engineLed, update() {
     breakerLed.setState(sim.breaker ? 'on' : 'off');
     busLed.setState(sim.busPowered ? 'on' : 'off');
     if (sim.engineState === 'on') engineLed.setState('on');
     else if (sim.engineState === 'starting') engineLed.setState('warn');
     else engineLed.setState('off');
   }};
+}
+
+// ---------- ТОРПЕДНЫЙ ПУЛЬТ (нижняя палуба, нос) ----------
+function makeTorpedoPanel(sim) {
+  const cz = -15.2, cy = -0.35, face = Math.PI;
+  makeButton(-0.5, cy, cz, {
+    label: `ТОРПЕДА ЛЕВ — ПУСК (${sim.torpedoes})`, rotY: face, color: MAT.red,
+    canUse: () => sim.torpedoes > 0 && sim.engineOn,
+    onPress() {
+      if (sim.torpedoes > 0) {
+        sim.torpedoes--;
+        G.sfx.torpedoLaunch();
+        G.hud.log(`🚀 Торпеда выпущена! Осталось: ${sim.torpedoes}`, 'ok');
+      }
+    },
+  });
+  makeButton(0.5, cy, cz, {
+    label: `ТОРПЕДА ПРАВ — ПУСК (${sim.torpedoes})`, rotY: face, color: MAT.red,
+    canUse: () => sim.torpedoes > 0 && sim.engineOn,
+    onPress() {
+      if (sim.torpedoes > 0) {
+        sim.torpedoes--;
+        G.sfx.torpedoLaunch();
+        G.hud.log(`🚀 Торпеда выпущена! Осталось: ${sim.torpedoes}`, 'ok');
+      }
+    },
+  });
+  makeButton(0, cy - 0.45, cz, {
+    label: 'ПЕРЕЗАРЯДКА ТОРПЕДНОГО АППАРАТА', rotY: face, color: MAT.yellow,
+    canUse: () => sim.torpedoes < 4,
+    onPress() {
+      sim.torpedoes = Math.min(4, sim.torpedoes + 1);
+      G.sfx.wrench();
+      G.hud.log(`🔧 Торпеда заряжена. Боезапас: ${sim.torpedoes}/4`, 'ok');
+    },
+  });
 }
 
 // ---------- ШЛЮЗ: внутренняя дверь → камера → наружная дверь ----------
@@ -440,9 +485,9 @@ export function buildControls() {
   const C = {};
   const sim = G.sim;
 
-  makeWheel(0, 1.35, -8.6, { onChange: v => { sim.rudder = v; } });
+  makeWheel(0, 1.35, -7.8, { onChange: v => { sim.rudder = v; } });
 
-  const throttleRef = makeLever(-1.7, 1.15, -8.8, {
+  const throttleRef = makeLever(-1.2, 1.15, -7.9, {
     min: -0.3, max: 1, init: 0, label: 'МАШИННЫЙ ТЕЛЕГРАФ (ход)', color: MAT.brass,
     canUse: () => sim.engineOn,
     onChange: v => { sim.throttle = v; },
@@ -460,18 +505,9 @@ export function buildControls() {
   makeKlaxonPull(0.9, 2.85, -7.2);
   makeEmergencyBlow(2.8, 1.5, -6.5, -Math.PI / 2);
 
-  // дублирующий пуск/стоп на мостике
-  makeButton(-2.5, 1.55, -9.0, {
-    label: 'ПУСК ДВИГАТЕЛЯ (мостик)', rotY: Math.PI / 2, color: MAT.green,
-    canUse: () => sim.busPowered && sim.engineState === 'off',
-    onPress() {
-      const r = sim.startEngine();
-      if (r === 'ok') { G.sfx.engineCrank(); G.hud.log('🔧 Запуск двигателя с мостика…', ''); }
-      else G.hud.hintFlash('Нет питания на шине — идите в машинный отсек.');
-    },
-  });
-  makeButton(-2.5, 1.2, -9.0, {
-    label: 'СТОП ДВИГАТЕЛЯ (мостик)', rotY: Math.PI / 2, color: MAT.red,
+  // дублирующий СТОП на мостике (пуск только в машинном отсеке внизу)
+  makeButton(2.0, 1.42, -8.35, {
+    label: 'СТОП ДВИГАТЕЛЯ (мостик)', rotY: -Math.PI / 2, color: MAT.red,
     canUse: () => sim.engineOn || sim.engineState === 'starting',
     onPress() {
       sim.stopEngine();
@@ -524,6 +560,7 @@ export function buildControls() {
   });
 
   C.enginePanel = makeEnginePanel(sim);
+  makeTorpedoPanel(sim);
   makeAirlock();
 
   G.controls = C;
