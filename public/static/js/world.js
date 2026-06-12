@@ -2,15 +2,15 @@
 import * as THREE from 'three';
 import { G, addCollider } from './state.js';
 
-// Интерьер: труба вдоль оси Z. Ширина 6, высота 3.2, длина 40 (z: -18..22)
-// Отсеки (нос -> корма):
-//  ТОРПЕДНЫЙ  z[-18,-10] · МОСТИК z[-10,-2] · ЖИЛОЙ z[-2,6] · РЕАКТОРНЫЙ z[6,14] · МАШИННЫЙ z[14,22]
-//  ШЛЮЗ z[22,25]
-export const HULL = { w: 6, h: 3.2, z0: -18, z1: 22 };
+// Интерьер: труба вдоль оси Z. Мостик в носу с иллюминаторами, торпедный — нижняя палуба под мостиком.
+//  МОСТИК z[-18,-2] · ЖИЛОЙ z[-2,6] · РЕАКТОР z[6,14] · МАШИННЫЙ z[14,22] · ШЛЮЗ z[22,25]
+//  ТОРПЕДНЫЙ (нижняя палуба) z[-18,-10], y[-1.2,0]
+export const HULL = { w: 6, h: 3.2, z0: -18, z1: 22, lowerH: 1.2 };
 export const SEABED_DEPTH = 150;
+export const DECK = { eyeY: 4.05, z: 25.5 };
 export const COMPARTMENTS = [
-  { id: 'torpedo', name: 'ТОРПЕДНЫЙ ОТСЕК',  z0: -18, z1: -10, color: 0x37474f },
-  { id: 'bridge',  name: 'МОСТИК',            z0: -10, z1: -2,  color: 0x263238 },
+  { id: 'bridge',  name: 'МОСТИК',            z0: -18, z1: -2,  color: 0x263238 },
+  { id: 'torpedo', name: 'ТОРПЕДНЫЙ ОТСЕК',  z0: -18, z1: -10, color: 0x37474f, lowerDeck: true },
   { id: 'living',  name: 'ЖИЛОЙ ОТСЕК',       z0: -2,  z1: 6,   color: 0x33393d },
   { id: 'reactor', name: 'РЕАКТОРНЫЙ ОТСЕК',  z0: 6,   z1: 14,  color: 0x3e2723 },
   { id: 'engine',  name: 'МАШИННЫЙ ОТСЕК',    z0: 14,  z1: 22,  color: 0x2d3436 },
@@ -85,6 +85,7 @@ function buildHullInterior() {
 
   // --- боковые стены посегментно: в мостике — окна! ---
   for (const c of COMPARTMENTS) {
+    if (c.lowerDeck) continue;
     const segLen = c.z1 - c.z0, segZc = (c.z0 + c.z1) / 2;
     for (const sx of [-1, 1]) {
       const X = sx * (w / 2 + 0.1);
@@ -110,29 +111,41 @@ function buildHullInterior() {
     addCollider(new THREE.Vector3(w / 2, 0, c.z0), new THREE.Vector3(w / 2 + 0.2, h, c.z1));
   }
 
-  // --- НОСОВОЙ ТОРЕЦ с большим иллюминатором (вид в океан) ---
+  // --- НОС МОСТИКА: панорамный иллюминатор (вид вперёд) ---
   {
-    const X = 0, Z = z0 - 0.1;
-    // рама вокруг круглого окна r=1.05 в центре (0, 1.6)
-    box(w, 0.55, 0.2, MAT.bulk, 0, 0.275, Z, null, true);          // низ
-    box(w, h - 2.65, 0.2, MAT.bulk, 0, (h + 2.65) / 2, Z, null, true); // верх
-    box((w - 2.3) / 2, 2.1, 0.2, MAT.bulk, -(2.3 / 2 + (w - 2.3) / 4), 1.6, Z, null, true);
-    box((w - 2.3) / 2, 2.1, 0.2, MAT.bulk,  (2.3 / 2 + (w - 2.3) / 4), 1.6, Z, null, true);
-    // стекло-купол
-    const glass = new THREE.Mesh(new THREE.CircleGeometry(1.08, 28), MAT.glass);
+    const Z = z0 - 0.1;
+    box(w, 0.55, 0.2, MAT.bulk, 0, 0.275, Z, null, true);
+    box(w, h - 2.65, 0.2, MAT.bulk, 0, (h + 2.65) / 2, Z, null, true);
+    box((w - 2.8) / 2, 2.1, 0.2, MAT.bulk, -(2.8 / 2 + (w - 2.8) / 4), 1.6, Z, null, true);
+    box((w - 2.8) / 2, 2.1, 0.2, MAT.bulk,  (2.8 / 2 + (w - 2.8) / 4), 1.6, Z, null, true);
+    const glass = new THREE.Mesh(new THREE.CircleGeometry(1.15, 28), MAT.glass);
     glass.position.set(0, 1.6, Z + 0.02); glass.renderOrder = 5;
     G.scene.add(glass);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.09, 10, 30), MAT.brass);
+    G.bridgeGlass = glass;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.18, 0.09, 10, 30), MAT.brass);
     rim.position.set(0, 1.6, Z + 0.05); G.scene.add(rim);
-    // болты по ободу
-    for (let i = 0; i < 12; i++) {
-      const a = i / 12 * Math.PI * 2;
-      const b = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), MAT.dark);
-      b.position.set(Math.cos(a) * 1.1, 1.6 + Math.sin(a) * 1.1, Z + 0.12);
-      G.scene.add(b);
+    const sCmd = makeSign('COMMAND', 1.4, 0.28);
+    sCmd.position.set(0, 2.85, z0 + 0.2); G.scene.add(sCmd);
+  }
+
+  // --- НИЖНЯЯ ПАЛУБА: торпедный отсек (под мостиком) ---
+  {
+    const tz0 = -18, tz1 = -10, tzc = (tz0 + tz1) / 2, tlen = tz1 - tz0;
+    box(w - 0.4, 0.15, tlen, MAT.floor, 0, -1.05, tzc);
+    box(0.2, 1.0, tlen, MAT.hull, -w / 2 + 0.1, -0.55, tzc, null, true);
+    box(0.2, 1.0, tlen, MAT.hull,  w / 2 - 0.1, -0.55, tzc, null, true);
+    box(w, 0.12, 0.2, MAT.bulk, 0, -0.05, tz0 - 0.1, null, true);
+    // лестница с мостика
+    for (let i = 0; i < 5; i++) {
+      const step = box(0.7, 0.08, 0.35, MAT.brass, 2.1, 0.15 - i * 0.22, -10.2 - i * 0.35);
+      step.rotation.x = -0.35;
     }
-    // коллайдер всего торца (через стекло не пройти)
-    addCollider(new THREE.Vector3(-w / 2, 0, z0 - 0.3), new THREE.Vector3(w / 2, h, z0));
+    const sTorp = makeSign('↓ TORPEDO', 1.3, 0.28);
+    sTorp.position.set(0, 2.55, -10.05); sTorp.rotation.y = Math.PI;
+    G.scene.add(sTorp);
+    const sTorp2 = makeSign('TORPEDO', 1.2, 0.26, '#0d1418', '#80d8ff');
+    sTorp2.position.set(0, -0.35, tzc); G.scene.add(sTorp2);
+    G.lowerDeckZ = { z0: tz0, z1: tz1 };
   }
 
   // --- КОРМОВОЙ ТОРЕЦ с проёмом в шлюз ---
@@ -174,9 +187,12 @@ function buildHullInterior() {
   cyl(0.07, len, MAT.pipe2,  w / 2 - 0.5, h - 0.25, zc, null, 0, Math.PI / 2);
 
   // переборки между отсеками с проёмами + ЖЁЛТАЯ ОКАНТОВКА + ТАБЛИЧКИ
-  const signNames = { torpedo: 'ТОРПЕДНЫЙ', bridge: 'МОСТИК', living: 'ЖИЛОЙ', reactor: 'РЕАКТОР', engine: 'МАШИННЫЙ' };
-  for (let i = 1; i < COMPARTMENTS.length; i++) {
-    const z = COMPARTMENTS[i].z0;
+  const signNames = { bridge: 'COMMAND', living: 'ЖИЛОЙ', reactor: 'REACTOR', engine: 'ENGINE' };
+  const bulkheads = ['living', 'reactor', 'engine'];
+  for (const cid of bulkheads) {
+    const comp = COMPARTMENTS.find(c => c.id === cid);
+    if (!comp) continue;
+    const z = comp.z0;
     const side = (w - 1.2) / 2;
     box(side, h, 0.25, MAT.bulk, -(1.2 / 2 + side / 2), h / 2, z, null, true);
     box(side, h, 0.25, MAT.bulk,  (1.2 / 2 + side / 2), h / 2, z, null, true);
@@ -187,12 +203,15 @@ function buildHullInterior() {
     box(0.12, 2.15, 0.3, MAT.hazard,  0.66, 1.075, z);
     box(1.44, 0.12, 0.3, MAT.hazard, 0, 2.21, z);
     // таблички с обеих сторон + лампа над проёмом
-    const sFwd = makeSign('→ ' + signNames[COMPARTMENTS[i].id]);
+    const prev = COMPARTMENTS[COMPARTMENTS.indexOf(comp) - 1];
+    const sFwd = makeSign('→ ' + signNames[comp.id]);
     sFwd.position.set(0, 2.55, z - 0.16); sFwd.rotation.y = Math.PI;
     G.scene.add(sFwd);
-    const sBack = makeSign('→ ' + signNames[COMPARTMENTS[i - 1].id]);
-    sBack.position.set(0, 2.55, z + 0.16);
-    G.scene.add(sBack);
+    if (prev) {
+      const sBack = makeSign('→ ' + (signNames[prev.id] || prev.name));
+      sBack.position.set(0, 2.55, z + 0.16);
+      G.scene.add(sBack);
+    }
     const doorLamp = new THREE.PointLight(0xffc400, 1.5, 3.2, 2);
     doorLamp.position.set(0, 2.35, z); G.scene.add(doorLamp);
   }
@@ -200,15 +219,21 @@ function buildHullInterior() {
   const sAir = makeSign('→ ШЛЮЗ', 1.3, 0.3);
   sAir.position.set(0, 2.55, z1 - 0.05); sAir.rotation.y = Math.PI;
   G.scene.add(sAir);
-  // табличка над носовым иллюминатором
-  const sBow = makeSign('ОБЗОРНЫЙ ИЛЛЮМИНАТОР', 2.2, 0.28, '#0d1418', '#80d8ff');
-  sBow.position.set(0, 2.95, z0 + 0.05);
-  G.scene.add(sBow);
+  const sAir2 = makeSign('AIRLOCK', 1.3, 0.28);
+  sAir2.position.set(0, 2.55, 22.1);
+  G.scene.add(sAir2);
 }
 
 function buildLights() {
   G.scene.add(new THREE.AmbientLight(0x223344, 0.55));
   for (const c of COMPARTMENTS) {
+    if (c.lowerDeck) {
+      const zc = (c.z0 + c.z1) / 2;
+      const lamp = new THREE.PointLight(0xffe7c4, 4, 8, 1.8);
+      lamp.position.set(0, -0.4, zc);
+      G.scene.add(lamp);
+      continue;
+    }
     const zc = (c.z0 + c.z1) / 2;
     const lamp = new THREE.PointLight(0xffe7c4, 9, 11, 1.6);
     lamp.position.set(0, HULL.h - 0.35, zc);
@@ -236,18 +261,14 @@ function buildLights() {
 function buildProps() {
   const w = HULL.w;
 
-  // === ТОРПЕДНЫЙ: 2 торпедных аппарата + стеллаж (проход по центру свободен) ===
-  for (const x of [-1.7, 1.7]) {
-    cyl(0.5, 2.6, MAT.hull, x, 1.2, -16.6, null, 0, Math.PI / 2);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.18, 18), MAT.brass);
-    cap.position.set(x, 1.2, -15.3); cap.rotation.x = Math.PI / 2; G.scene.add(cap);
-    addCollider(new THREE.Vector3(x - 0.6, 0, -17.9), new THREE.Vector3(x + 0.6, 2, -15.2));
+  // === ТОРПЕДНЫЙ (нижняя палуба): аппараты по бокам, проход по центру ===
+  const ly = -0.55;
+  for (const x of [-2.0, 2.0]) {
+    cyl(0.35, 2.2, MAT.hull, x, ly, -15, null, 0, Math.PI / 2);
+    addCollider(new THREE.Vector3(x - 0.45, -1.1, -16.5), new THREE.Vector3(x + 0.45, 0, -13.5));
   }
-  // торпеды на стеллажах по бокам
-  cyl(0.28, 3.2, MAT.dark, -2.2, 0.55, -12.5, null, 0, Math.PI / 2);
-  box(0.8, 0.35, 2.6, MAT.dark, -2.2, 0.18, -12.5, null, true);
-  cyl(0.28, 3.2, MAT.dark, 2.2, 0.55, -12.5, null, 0, Math.PI / 2);
-  box(0.8, 0.35, 2.6, MAT.dark, 2.2, 0.18, -12.5, null, true);
+  cyl(0.22, 2.8, MAT.dark, -2.3, ly, -14, null, 0, Math.PI / 2);
+  cyl(0.22, 2.8, MAT.dark, 2.3, ly, -14, null, 0, Math.PI / 2);
 
   // === МОСТИК: консоль РАЗДЕЛЕНА — проход к торпедному по центру ===
   for (const sx of [-1, 1]) {
@@ -388,9 +409,9 @@ function buildUnderwater() {
   G.scene.add(plankton);
   G.plankton = plankton;
 
-  // прожектор лодки (светит вперёд из носа)
+  // прожектор лодки (светит вперёд из носа мостика)
   const head = new THREE.SpotLight(0xcfe8ff, 0, 260, 0.5, 0.4, 1.2);
-  head.position.set(0, 1.6, -18.5);
+  head.position.set(0, 1.6, -17.8);
   const tgt = new THREE.Object3D(); tgt.position.set(0, 0, -200);
   G.scene.add(tgt); head.target = tgt;
   G.scene.add(head);
@@ -402,51 +423,46 @@ function buildUnderwater() {
   G.uwDim = dim;
 }
 
-// ---------- ВНЕШНЯЯ ЗОНА (палуба, выход через шлюз) ----------
-export const EXT = { x: 80 };
+// ---------- ПАЛУБА (единая карта, корма субмарины) ----------
 function buildExterior() {
   const g = new THREE.Group();
-  g.position.x = EXT.x;
   G.scene.add(g);
   G.exterior = g;
 
-  // океан (поверхность; прячется под водой)
-  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(300, 300, 40, 40), MAT.ocean);
-  ocean.rotation.x = -Math.PI / 2; ocean.position.y = -0.8; g.add(ocean);
+  const deckY = DECK.eyeY - 1.62;
+  // палуба на корме
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.18, 14), MAT.deck);
+  deck.position.set(0, deckY, 24); g.add(deck);
+  // рубка на палубе
+  const sail = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.8, 4), MAT.hull);
+  sail.position.set(0, deckY + 1.5, 22); g.add(sail);
+  // перископ
+  cyl(0.07, 2.2, MAT.dark, 0, deckY + 2.8, 21.5, g);
+
+  // океан вокруг (поверхность)
+  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 32, 32), MAT.ocean);
+  ocean.rotation.x = -Math.PI / 2; ocean.position.set(0, deckY - 0.5, 24);
+  g.add(ocean);
   G.oceanMesh = ocean;
 
-  const hull = new THREE.Mesh(new THREE.CapsuleGeometry(3, 34, 6, 14), MAT.deck);
-  hull.rotation.x = Math.PI / 2; hull.position.set(0, -2.2, 2); g.add(hull);
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.25, 36), MAT.deck);
-  deck.position.set(0, -0.05, 2); g.add(deck);
-  const sail = new THREE.Mesh(new THREE.BoxGeometry(2.2, 3.4, 5), MAT.hull);
-  sail.position.set(0, 1.7, -4); g.add(sail);
-  addCollider(new THREE.Vector3(EXT.x - 1.1, 0, -6.5), new THREE.Vector3(EXT.x + 1.1, 3.4, -1.5));
-  cyl(0.09, 2.4, MAT.dark, 0, 4.5, -4.5, g);
-  for (const sx of [-1.6, 1.6]) {
-    for (let z = -15; z <= 19; z += 2) {
-      cyl(0.03, 0.9, MAT.dark, sx, 0.45, z, g);
-    }
-    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 35, 6), MAT.brass);
-    rail.rotation.x = Math.PI / 2; rail.position.set(sx, 0.9, 2); g.add(rail);
-    addCollider(new THREE.Vector3(EXT.x + sx - 0.15, 0, -16), new THREE.Vector3(EXT.x + sx + 0.15, 1.2, 20));
+  // перила
+  for (const sx of [-2.0, 2.0]) {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 13, 6), MAT.brass);
+    rail.rotation.x = Math.PI / 2; rail.position.set(sx, deckY + 0.95, 24); g.add(rail);
+    addCollider(new THREE.Vector3(sx - 0.15, deckY, 17.5), new THREE.Vector3(sx + 0.15, deckY + 1.2, 30.5));
   }
-  addCollider(new THREE.Vector3(EXT.x - 2, 0, -16.3), new THREE.Vector3(EXT.x + 2, 1.2, -15.8));
-  addCollider(new THREE.Vector3(EXT.x - 2, 0, 19.8), new THREE.Vector3(EXT.x + 2, 1.2, 20.3));
+  addCollider(new THREE.Vector3(-2.2, deckY, 17.3), new THREE.Vector3(2.2, deckY + 1.2, 17.8));
+  addCollider(new THREE.Vector3(-2.2, deckY, 30.2), new THREE.Vector3(2.2, deckY + 1.2, 30.7));
 
-  // люк шлюза на палубе с ЖЁЛТОЙ окантовкой
-  const hatch = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.1, 18), MAT.brass);
-  hatch.position.set(0, 0.12, 16); g.add(hatch);
-  const hatchRing = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.05, 8, 24), MAT.hazard);
-  hatchRing.rotation.x = Math.PI / 2; hatchRing.position.set(0, 0.13, 16); g.add(hatchRing);
-  G.extHatch = hatch;
+  const sDeck = makeSign('ПАЛУБА / AIRLOCK', 1.8, 0.3);
+  sDeck.position.set(0, deckY + 1.15, 24.5); sDeck.rotation.x = -0.4;
+  g.add(sDeck);
 
-  // солнце/небо (выключаются под водой)
-  const sun = new THREE.DirectionalLight(0xfff3e0, 1.5);
-  sun.position.set(40, 60, -30); g.add(sun);
+  const sun = new THREE.DirectionalLight(0xfff3e0, 1.2);
+  sun.position.set(30, 50, 10); G.scene.add(sun);
   G.extSun = sun;
-  const amb = new THREE.HemisphereLight(0x9fd8ff, 0x0a3550, 0.9);
-  g.add(amb);
+  const amb = new THREE.HemisphereLight(0x9fd8ff, 0x0a3550, 0.6);
+  G.scene.add(amb);
   G.extAmb = amb;
 }
 
@@ -466,7 +482,7 @@ const _tmp = new THREE.Vector3();
 export function updateWorld(t, dt) {
   const sim = G.sim;
 
-  // волны океана (внешняя зона)
+  // волны океана на палубе
   if (G.oceanMesh && G.flags.outside && sim.depth <= 0.5) {
     const pos = G.oceanMesh.geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) {
@@ -475,6 +491,10 @@ export function updateWorld(t, dt) {
     }
     pos.needsUpdate = true;
   }
+
+  // внешнее освещение: только на поверхности
+  if (G.extSun) G.extSun.intensity = sim.depth <= 0.5 ? 1.2 : 0;
+  if (G.extAmb) G.extAmb.intensity = sim.depth <= 0.5 ? 0.6 : 0;
 
   // --- подводный мир: вращаем/смещаем вокруг лодки ---
   if (G.underwater && sim) {
@@ -496,10 +516,18 @@ export function updateWorld(t, dt) {
     G.headlight.intensity = sim?.lightsOn && sim?.busPowered ? 900 : 0;
   }
 
-  // планктон дрейфует
+  // планктон: усиленный дрейф при движении
   if (G.plankton) {
-    G.plankton.rotation.y = t * 0.01;
+    const spd = Math.abs(sim?.speed || 0);
+    G.plankton.rotation.y = t * 0.01 + spd * 0.02;
     G.plankton.position.y = Math.sin(t * 0.3) * 1.2;
+    G.plankton.position.z = Math.sin(t * 0.5) * spd * 0.15;
+  }
+
+  // иллюминатор мостика слегка «дрожит» на ходу
+  if (G.bridgeGlass && sim) {
+    const shake = Math.abs(sim.speed) * 0.002;
+    G.bridgeGlass.position.x = Math.sin(t * 3.7) * shake;
   }
 
   // вода в отсеках
@@ -510,16 +538,24 @@ export function updateWorld(t, dt) {
       if (lvl > 0.01) {
         m.visible = true;
         m.scale.y = lvl;
-        m.position.y = lvl / 2 - 0.5 + 0.5; // от пола вверх
-        m.position.y = lvl / 2;
+        const floorY = c.lowerDeck ? -1.0 : 0;
+        m.position.y = floorY + lvl / 2;
       } else m.visible = false;
     }
   }
 }
 
-export function compartmentAt(z) {
-  for (const c of COMPARTMENTS) if (z >= c.z0 && z < c.z1) return c;
-  return COMPARTMENTS[2];
+export function compartmentAt(z, y = 1.62) {
+  if (z >= -18 && z < -10 && y < 1.0) {
+    return COMPARTMENTS.find(c => c.id === 'torpedo') || COMPARTMENTS[0];
+  }
+  for (const c of COMPARTMENTS) {
+    if (c.lowerDeck) continue;
+    if (z >= c.z0 && z < c.z1) return c;
+  }
+  if (z >= 22) return { name: 'ШЛЮЗ' };
+  if (z >= 17.5) return { name: 'ПАЛУБА' };
+  return COMPARTMENTS[0];
 }
 
 function mulberry32(a) {

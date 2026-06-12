@@ -17,7 +17,13 @@ export const G = {
   sim: null,
 
   // флаги
-  flags: { started: false, over: false, outside: false },
+  flags: { started: false, over: false, outside: false, spectator: false },
+
+  // шлюз
+  airlock: { innerOpen: false, outerOpen: false, flooded: false },
+
+  // dev
+  devOverlay: null,
 
   // сервисы (заполняются модулями)
   hud: null,

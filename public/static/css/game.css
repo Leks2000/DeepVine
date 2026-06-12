@@ -66,6 +66,12 @@ kbd {
   padding: 10px 14px; font-size: 13px; backdrop-filter: blur(2px);
 }
 .val { color: #4fc3f7; }
+.eng-off { color: #78909c; }
+.eng-starting { color: #ffc400; animation: pulse 0.6s infinite; }
+.eng-on { color: #00e676; }
+.eng-stopping { color: #ff8a65; }
+.stress-warn { color: #ffb74d; }
+.stress-bad { color: #ff5252; animation: pulse 0.8s infinite; }
 
 #objectives .obj { color: #90a4ae; padding: 1px 0; }
 #objectives .obj.done { color: #00e676; text-decoration: line-through; }

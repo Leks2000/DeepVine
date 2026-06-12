@@ -4,7 +4,8 @@ import { G } from './state.js';
 import { buildWorld, updateWorld } from './world.js';
 import { Player } from './player.js';
 import { Sim } from './sim.js';
-import { buildControls } from './controls.js';
+import { buildControls, updateControls } from './controls.js';
+import { initDev, updateDev } from './dev.js';
 import { Hazards } from './hazards.js';
 import { Upgrades } from './upgrades.js';
 import { Hud, showEnd } from './hud.js';
@@ -34,6 +35,7 @@ function init() {
   buildControls();
   G.hazards = new Hazards();
   G.upgrades = new Upgrades();
+  initDev();
 
   addEventListener('resize', () => {
     G.camera.aspect = innerWidth / innerHeight;
@@ -65,7 +67,9 @@ function loop() {
     G.hazards.update(dt, elapsed);
     G.upgrades.update(dt, elapsed);
     G.hud.update(dt);
-    updateWorld(elapsed);
+    updateControls();
+    updateDev();
+    updateWorld(elapsed, dt);
 
     // туман/окружение: снаружи светло, внутри темно
     if (G.flags.outside) {

@@ -1,8 +1,11 @@
 // ============ HUD / UI ============
 import { G } from './state.js';
-import { compartmentAt } from './world.js';
 
 const $ = id => document.getElementById(id);
+
+const ENGINE_LABELS = {
+  off: 'ВЫКЛ', starting: 'ЗАПУСК…', on: 'ONLINE', stopping: 'СТОП…',
+};
 
 export class Hud {
   constructor() {
@@ -14,8 +17,10 @@ export class Hud {
       objReactor: $('obj-reactor'), objDive: $('obj-dive'),
       objUpgrade: $('obj-upgrade'), objSurface: $('obj-surface'),
       cntUpg: $('cnt-upg'), flashEl: $('alert-flash'), vign: $('damage-vignette'),
+      engine: $('h-engine'), stress: $('h-stress'),
     };
     this._hintT = 0;
+    this._stressWarnT = 0;
   }
 
   log(msg, cls = '') {
@@ -23,7 +28,7 @@ export class Hud {
     d.className = 'log-line ' + cls;
     d.textContent = msg;
     this.el.log.prepend(d);
-    while (this.el.log.children.length > 6) this.el.log.lastChild.remove();
+    while (this.el.log.children.length > 8) this.el.log.lastChild.remove();
   }
 
   flash() {
@@ -39,6 +44,7 @@ export class Hud {
   }
 
   _bar(el, v) {
+    if (!el) return;
     el.style.width = v + '%';
     el.className = 'fill ' + (v > 50 ? 'ok' : v > 25 ? 'mid' : 'bad');
   }
@@ -48,11 +54,30 @@ export class Hud {
     this.el.depth.textContent = sim.depth.toFixed(0) + ' м';
     this.el.speed.textContent = Math.abs(sim.speed).toFixed(1) + ' уз';
     this.el.heading.textContent = String(sim.heading | 0).padStart(3, '0') + '°';
+
+    if (this.el.engine) {
+      const lbl = ENGINE_LABELS[sim.engineState] || sim.engineState;
+      this.el.engine.textContent = lbl;
+      this.el.engine.className = 'val eng-' + sim.engineState;
+    }
+    if (this.el.stress) {
+      this.el.stress.textContent = sim.stress.toFixed(0) + '%';
+      this.el.stress.className = 'val' + (sim.stress > 55 ? ' stress-warn' : sim.stress > 75 ? ' stress-bad' : '');
+      if (sim.stress > 65 && this._stressWarnT <= 0) {
+        this._stressWarnT = 8;
+      }
+      if (this._stressWarnT > 0) {
+        this._stressWarnT -= dt;
+        if (this._stressWarnT <= 0 && sim.stress > 55) {
+          this.log('⚠ Высокая нагрузка на системы!', 'warn');
+        }
+      }
+    }
+
     this._bar(this.el.hull, sim.hull);
     this._bar(this.el.o2, sim.o2);
     this._bar(this.el.power, sim.power);
 
-    // предмет в руках
     if (G.held) {
       this.el.item.textContent = G.held.label + ' [G — положить]';
       this.el.charge.textContent = G.held.charge ? ' · ' + G.held.charge() : '';
@@ -61,7 +86,6 @@ export class Hud {
       this.el.charge.textContent = '';
     }
 
-    // подсказка взаимодействия
     if (this._hintT > 0) {
       this._hintT -= dt;
       if (this._hintT <= 0) this.el.hint.classList.remove('warn');
@@ -70,14 +94,12 @@ export class Hud {
       this.el.hint.textContent = f ? f.hint() : '';
     }
 
-    // цели
     this._obj(this.el.objReactor, sim.goal.reactor, 'Запустить реактор');
     this._obj(this.el.objDive, sim.goal.dive, 'Погрузиться до 100 м');
     this.el.cntUpg.textContent = sim.goal.upgrades + '/3';
     this._obj(this.el.objUpgrade, sim.goal.upgrades >= 3, null);
     this._obj(this.el.objSurface, sim.goal.surface, 'Всплыть на поверхность');
 
-    // виньетка урона
     const danger = Math.max(0, 1 - Math.min(sim.hull, sim.o2) / 35);
     this.el.vign.style.opacity = danger * 0.75;
   }

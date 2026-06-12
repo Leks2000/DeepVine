@@ -1,32 +1,34 @@
 // ============ FPS-ИГРОК: WASD + мышь + коллизии + raycast ============
 import * as THREE from 'three';
 import { G } from './state.js';
+import { spectatorMove } from './dev.js';
 
-const EYE = 1.62;          // высота глаз
-const RADIUS = 0.32;       // радиус «капсулы» игрока
+const EYE_UPPER = 1.62;
+const EYE_LOWER = 0.42;
+const RADIUS = 0.32;
 const WALK = 3.2, RUN = 5.4;
 
 export class Player {
   constructor(camera, domElement) {
     this.camera = camera;
     this.dom = domElement;
-    this.pos = new THREE.Vector3(0, EYE, 8);   // старт на мостике
-    this.yaw = Math.PI;                        // смотрим в нос
+    this.pos = new THREE.Vector3(0, EYE_UPPER, -6);
+    this.yaw = Math.PI;
     this.pitch = 0;
     this.keys = {};
     this.locked = false;
     this.raycaster = new THREE.Raycaster();
     this.raycaster.far = 2.8;
-    this.focus = null;        // интерактив под прицелом
-    this.dragging = null;     // активный drag-интерактив
-    this.holding = null;      // активный hold-интерактив
+    this.focus = null;
+    this.dragging = null;
+    this.holding = null;
     this._bind();
   }
 
   _bind() {
     document.addEventListener('keydown', e => {
       this.keys[e.code] = true;
-      if (e.code === 'KeyE') this._press();
+      if (e.code === 'KeyE' && !G.flags.spectator) this._press();
       if (e.code === 'KeyG') this._dropHeld();
     });
     document.addEventListener('keyup', e => { this.keys[e.code] = false; });
@@ -35,19 +37,24 @@ export class Player {
       this.locked = document.pointerLockElement === this.dom;
     });
     this.dom.addEventListener('click', () => {
-      if (!this.locked && G.flags.started && !G.flags.over) this.dom.requestPointerLock();
+      if (!this.locked && G.flags.started && !G.flags.over && !G.flags.spectator) {
+        this.dom.requestPointerLock();
+      }
     });
     document.addEventListener('mousemove', e => {
-      if (!this.locked) return;
-      if (this.dragging) {
-        this.dragging.drag.move(e.movementX, e.movementY);
-        return; // во время перетаскивания камера зафиксирована
+      if (!this.locked && !G.flags.spectator) return;
+      if (G.flags.spectator || this.locked) {
+        if (this.dragging) {
+          this.dragging.drag.move(e.movementX, e.movementY);
+          return;
+        }
+        this.yaw -= e.movementX * 0.0022;
+        this.pitch -= e.movementY * 0.0022;
+        this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch));
       }
-      this.yaw -= e.movementX * 0.0022;
-      this.pitch -= e.movementY * 0.0022;
-      this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch));
     });
     document.addEventListener('mousedown', e => {
+      if (G.flags.spectator) return;
       if (!this.locked || e.button !== 0) return;
       const f = this.focus;
       if (f && f.drag && (!f.canUse || f.canUse())) {
@@ -55,7 +62,6 @@ export class Player {
       } else if (f && f.hold && (!f.canUse || f.canUse())) {
         this.holding = f; f.hold.start && f.hold.start();
       } else if (G.held && G.held.hold) {
-        // предмет в руках с hold-действием (огнетушитель/ключ) — обрабатывает hazards.js
         this.holding = { hold: G.held.hold, _heldItem: true };
         G.held.hold.start && G.held.hold.start();
       }
@@ -77,10 +83,31 @@ export class Player {
     if (G.held && G.held.drop) G.held.drop();
   }
 
-  update(dt) {
-    if (!this.locked && !G.flags.started) return;
+  _onLowerDeck() {
+    return this.pos.z >= -18 && this.pos.z < -10 && this.pos.y < 1.0;
+  }
 
-    // --- движение ---
+  _updateLadder(dt) {
+    if (this.pos.x > 1.0 && this.pos.z > -11.8 && this.pos.z < -9.5) {
+      if (this.keys['KeyS']) this.pos.y = Math.max(EYE_LOWER, this.pos.y - dt * 2.5);
+      if (this.keys['KeyW']) this.pos.y = Math.min(EYE_UPPER, this.pos.y + dt * 2.5);
+    }
+    if (this._onLowerDeck() && this.pos.y < 0.9) this.pos.y = EYE_LOWER;
+    else if (!this._onLowerDeck() && this.pos.y < 1.2 && this.pos.y > 0.9) this.pos.y = EYE_UPPER;
+  }
+
+  update(dt) {
+    if (!G.flags.started) return;
+    if (!this.locked && !G.flags.spectator) return;
+
+    if (spectatorMove(this, dt)) {
+      this.camera.position.copy(this.pos);
+      this.camera.rotation.set(0, 0, 0);
+      this.camera.rotateY(this.yaw);
+      this.camera.rotateX(this.pitch);
+      return;
+    }
+
     const speed = (this.keys['ShiftLeft'] || this.keys['ShiftRight']) ? RUN : WALK;
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
@@ -95,13 +122,13 @@ export class Player {
       this._moveAxis(move.z, 2);
     }
 
-    // --- камера ---
+    this._updateLadder(dt);
+
     this.camera.position.copy(this.pos);
     this.camera.rotation.set(0, 0, 0);
     this.camera.rotateY(this.yaw);
     this.camera.rotateX(this.pitch);
 
-    // --- raycast интерактивов ---
     this.raycaster.setFromCamera({ x: 0, y: 0 }, this.camera);
     const meshes = [];
     for (const it of G.interactables) if (it.mesh.visible !== false) meshes.push(it.mesh);
@@ -114,10 +141,8 @@ export class Player {
     }
     this.focus = found;
 
-    // --- hold tick ---
     if (this.holding) this.holding.hold.tick && this.holding.hold.tick(dt);
 
-    // --- позиция предмета в руках ---
     if (G.held && G.held.mesh) {
       const m = G.held.mesh;
       const offset = new THREE.Vector3(0.42, -0.38, -0.7).applyQuaternion(this.camera.quaternion);
@@ -126,23 +151,24 @@ export class Player {
     }
   }
 
-  // скользящие коллизии по AABB, по одной оси
   _moveAxis(d, axis) {
     if (d === 0) return;
     const p = this.pos.clone();
     if (axis === 0) p.x += d; else p.z += d;
+    const feet = p.y - 1.62;
     for (const c of G.colliders) {
+      const bodyTop = p.y + 0.1;
       if (p.x + RADIUS > c.min.x && p.x - RADIUS < c.max.x &&
           p.z + RADIUS > c.min.z && p.z - RADIUS < c.max.z &&
-          EYE > c.min.y && c.max.y > 0.3) {
-        return; // упёрлись
+          bodyTop > c.min.y && feet < c.max.y) {
+        return;
       }
     }
     this.pos.copy(p);
   }
 
-  teleport(x, z, yaw = null) {
-    this.pos.set(x, EYE, z);
+  teleport(x, z, yaw = null, y = null) {
+    this.pos.set(x, y ?? EYE_UPPER, z);
     if (yaw !== null) this.yaw = yaw;
   }
 }

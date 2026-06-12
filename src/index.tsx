@@ -56,7 +56,9 @@ app.get('/', (c) => {
       <div class="hud-box">
         ГЛУБИНА <span id="h-depth" class="val">0 м</span> ·
         СКОРОСТЬ <span id="h-speed" class="val">0.0 уз</span> ·
-        КУРС <span id="h-heading" class="val">000°</span>
+        КУРС <span id="h-heading" class="val">000°</span> ·
+        ДВИГАТЕЛЬ <span id="h-engine" class="val eng-off">ВЫКЛ</span> ·
+        НАГРУЗКА <span id="h-stress" class="val">0%</span>
       </div>
       <div class="hud-box" id="objectives">
         <div class="obj" id="obj-reactor">○ Запустить реактор</div>

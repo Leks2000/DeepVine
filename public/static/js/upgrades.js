@@ -1,7 +1,7 @@
 // ============ ВЕРСТАК УЛУЧШЕНИЙ: крафт → перенос → установка в слот ============
 import * as THREE from 'three';
 import { G, registerInteractable, unregisterInteractable } from './state.js';
-import { MAT, EXT } from './world.js';
+import { MAT, DECK } from './world.js';
 
 // Рецепты улучшений
 const RECIPES = [
@@ -145,7 +145,7 @@ export class Upgrades {
     this._makeSlot('inside-engine', new THREE.Vector3(1.8, 1.65, 16), 0,
       'СЛОТ ДВИГАТЕЛЯ (машинный отсек)');
     // слот 3: СНАРУЖИ на палубе — броня
-    this._makeSlot('outside-deck', new THREE.Vector3(EXT.x, 0.25, 6), 0,
+    this._makeSlot('outside-deck', new THREE.Vector3(1.6, DECK.eyeY - 1.55, DECK.z), 0,
       'ВНЕШНИЙ СЛОТ БРОНИ (палуба)', true);
   }
 

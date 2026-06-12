@@ -177,18 +177,25 @@ export class Sim {
     } else if (this.engineState === 'stopping') {
       this.engineTimer += dt;
       this.rpm = Math.max(0, this.rpm - dt * 0.5);
-      if (this.rpm <= 0.01) { this.rpm = 0; this.engineState = 'off'; }
+      if (this.rpm <= 0.01) {
+        this.rpm = 0; this.engineState = 'off';
+        G.hud?.log('⚫ Двигатель остановлен.', '');
+      }
     } else {
       this.rpm = Math.max(0, this.rpm - dt * 0.6);
     }
     G.sfx?.setEngine(this.rpm, this.engineState);
     G.sfx?.setReactor(this.reactorOn ? this.reactorHeat / 120 : 0);
+    G.sfx?.setWater(Math.min(1, this.totalWater() / 3));
 
     // --- ход (только при работающем двигателе) ---
+    if (!this.engineOn && this.engineState !== 'starting') {
+      this.throttle += (0 - this.throttle) * Math.min(1, dt * 3);
+    }
     const targetSpeed = this.engineOn ? this.throttle * 18 * Math.min(1, this.mod.engineEff) : 0;
     this.speed += (targetSpeed - this.speed) * Math.min(1, dt * 0.35);
     if (Math.abs(this.speed) < 0.02 && !this.engineOn) this.speed = 0;
-    this.heading = (this.heading + this.rudder * Math.abs(this.speed) * 0.6 * dt + 360) % 360;
+    this.heading = (this.heading + this.rudder * Math.abs(this.speed) * 0.28 * dt + 360) % 360;
 
     // --- реальное перемещение лодки ---
     const hr = this.heading * Math.PI / 180;
