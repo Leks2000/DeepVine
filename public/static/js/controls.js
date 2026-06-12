@@ -94,7 +94,7 @@ function makeToggle(x, y, z, { label, init = false, onChange, rotY = 0 }) {
       on = !on;
       apply();
       onChange(on);
-      G.sfx.click();
+      G.sfx.toggleSwitch();
     },
     setOn(v) { on = !!v; apply(); },
     isOn: () => on,
@@ -150,19 +150,20 @@ function makeWheel(x, y, z, { onChange }) {
   wheel.add(hub);
   G.scene.add(grp);
 
+  const MAX_TURN = 2.8;
   let turn = 0;
   registerInteractable({
     mesh: grp,
     hint: () => `ШТУРВАЛ (курс) — зажмите ЛКМ, ведите влево/вправо`,
     drag: {
       move(dx) {
-        turn = clamp(turn + dx * 0.01, -1.6, 1.6);
+        turn = clamp(turn + dx * 0.012, -MAX_TURN, MAX_TURN);
         wheel.rotation.z = -turn;
-        onChange(clamp(turn / 1.6, -1, 1));
+        onChange(clamp(turn / MAX_TURN, -1, 1));
       },
       end() {
         const iv = setInterval(() => {
-          turn *= 0.85; wheel.rotation.z = -turn; onChange(clamp(turn / 1.6, -1, 1));
+          turn *= 0.85; wheel.rotation.z = -turn; onChange(clamp(turn / MAX_TURN, -1, 1));
           if (Math.abs(turn) < 0.02) { turn = 0; wheel.rotation.z = 0; onChange(0); clearInterval(iv); }
         }, 50);
       },
@@ -498,7 +499,12 @@ export function buildControls() {
   C.ballastValve = G.interactables[G.interactables.length];
   makeValve(-2.85, 1.5, -6, {
     label: 'БАЛЛАСТ (заполнение)', rotY: Math.PI / 2,
-    onChange: v => { sim.ballast = v; },
+    onChange: v => {
+      const prev = sim.ballast;
+      sim.ballast = v;
+      if (v > prev + 0.05) G.sfx?.ballastFill();
+      else if (v < prev - 0.05) G.sfx?.ballastDrain();
+    },
   });
   C.ballastValve = G.interactables[G.interactables.length - 1];
 
@@ -528,6 +534,26 @@ export function buildControls() {
     onChange(on) {
       sim.pumpOn = on;
       G.hud.log(on ? '💧 Помпа ВКЛ.' : '💧 Помпа ВЫКЛ.', '');
+    },
+  });
+
+  makeToggle(-2.5, 1.55, -8.5, {
+    label: 'АВАРИЙНОЕ ОСВЕЩЕНИЕ', rotY: Math.PI / 2,
+    onChange(on) {
+      G.emergencyOn = on;
+      if (on) {
+        for (const L of G.interiorLights) {
+          L.light.intensity = L.base * 0.3;
+          if (L.bulb) L.bulb.material.emissiveIntensity = 0.3;
+        }
+        G.hud.log('🔴 Аварийное освещение ВКЛ.', 'warn');
+      } else {
+        for (const L of G.interiorLights) {
+          L.light.intensity = L.base;
+          if (L.bulb) L.bulb.material.emissiveIntensity = 1.4;
+        }
+        G.hud.log('Аварийное освещение ВЫКЛ.', '');
+      }
     },
   });
 
@@ -563,7 +589,40 @@ export function buildControls() {
   makeTorpedoPanel(sim);
   makeAirlock();
 
+  // кнопка переключения камер (на правой стене)
+  const camBtn = makeButton(2.8, 1.2, -12, {
+    label: 'КАМЕРА: НОС', rotY: -Math.PI / 2, color: MAT.green,
+    onPress() {
+      if (!G.extCameras) return;
+      G.extCameraIdx = (G.extCameraIdx + 1) % G.extCameras.length;
+      const cam = G.extCameras[G.extCameraIdx];
+      camBtn.cap.material.color.setHex(G.extCameraIdx === 0 ? 0x2e7d32 : G.extCameraIdx === 1 ? 0x1565c0 : 0xc62828);
+      G.hud.log(`📹 Камера: ${cam.name}`, 'ok');
+    },
+  });
+
   G.controls = C;
+
+  // сбор лута при приближении к POI
+  document.addEventListener('keydown', e => {
+    if (e.code !== 'KeyE' || G.flags.spectator) return;
+    if (!G.sim || !G.lootCrates) return;
+    const sim = G.sim;
+    const boatPos = new THREE.Vector3(sim.boatX, 0, sim.boatZ);
+    for (const crate of G.lootCrates) {
+      if (crate.looted) continue;
+      const dist = boatPos.distanceTo(crate.pos);
+      if (dist < 50) {
+        crate.looted = true;
+        crate.grp.visible = false;
+        const reward = 5 + Math.random() * 10 | 0;
+        sim.credits += reward;
+        G.sfx?.pickup();
+        G.hud.log(`📦 Найден лут! +${reward} кредитов (${dist.toFixed(0)}м)`, 'ok');
+        break;
+      }
+    }
+  });
 }
 
 export function updateControls() {

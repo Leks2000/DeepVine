@@ -48,8 +48,11 @@ export class Player {
           this.dragging.drag.move(e.movementX, e.movementY);
           return;
         }
-        this.yaw -= e.movementX * 0.0022;
-        this.pitch -= e.movementY * 0.0022;
+        // сглаживание мыши: игнорировать микро-движения
+        const mx = Math.abs(e.movementX) < 0.5 ? 0 : e.movementX;
+        const my = Math.abs(e.movementY) < 0.5 ? 0 : e.movementY;
+        this.yaw -= mx * 0.0022;
+        this.pitch -= my * 0.0022;
         this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch));
       }
     });
@@ -98,10 +101,12 @@ export class Player {
       if (this.keys['KeyS']) this.pos.y = Math.max(EYE_LOWER, this.pos.y - dt * 2.5);
       if (this.keys['KeyW']) this.pos.y = Math.min(EYE_UPPER, this.pos.y + dt * 2.5);
     }
-    if (this._onLowerDeck() && this.pos.y < 0.9) this.pos.y = EYE_LOWER;
-    else if (this._onLowerEngine() && this.pos.y < 0.9) this.pos.y = EYE_LOWER;
-    else if (!this._onLowerDeck() && !this._onLowerEngine() && this.pos.y < 1.2 && this.pos.y > 0.9) {
-      this.pos.y = EYE_UPPER;
+    // плавный переход высоты без дёрганья
+    const onLower = this._onLowerDeck() || this._onLowerEngine();
+    if (onLower && this.pos.y < 0.9) {
+      this.pos.y += (EYE_LOWER - this.pos.y) * Math.min(1, dt * 12);
+    } else if (!onLower && this.pos.y > 0.9 && this.pos.y < 1.3) {
+      this.pos.y += (EYE_UPPER - this.pos.y) * Math.min(1, dt * 12);
     }
   }
 
@@ -131,8 +136,26 @@ export class Player {
     if (this.keys['KeyA']) move.sub(right);
     if (move.lengthSq() > 0 && !this.dragging) {
       move.normalize().multiplyScalar(speed * dt);
-      this._moveAxis(move.x, 0);
-      this._moveAxis(move.z, 2);
+      // скольжение вдоль стен: проверяем X и Z отдельно
+      const newX = this.pos.x + move.x;
+      const newZ = this.pos.z + move.z;
+      const feet = this.pos.y - 1.62;
+      const bodyTop = this.pos.y + 0.1;
+      let canX = true, canZ = true;
+      for (const c of G.colliders) {
+        if (newX + RADIUS > c.min.x && newX - RADIUS < c.max.x &&
+            this.pos.z + RADIUS > c.min.z && this.pos.z - RADIUS < c.max.z &&
+            bodyTop > c.min.y && feet < c.max.y) {
+          canX = false;
+        }
+        if (this.pos.x + RADIUS > c.min.x && this.pos.x - RADIUS < c.max.x &&
+            newZ + RADIUS > c.min.z && newZ - RADIUS < c.max.z &&
+            bodyTop > c.min.y && feet < c.max.y) {
+          canZ = false;
+        }
+      }
+      if (canX) this.pos.x = newX;
+      if (canZ) this.pos.z = newZ;
     }
 
     this._updateLadder(dt);

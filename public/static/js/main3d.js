@@ -12,6 +12,7 @@ import { Hud, showEnd } from './hud.js';
 import { Sfx } from './audio.js';
 
 function init() {
+  try {
   const canvas = document.getElementById('game-canvas');
   G.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   G.renderer.setSize(innerWidth, innerHeight);
@@ -28,6 +29,18 @@ function init() {
   G.sfx = new Sfx();
   G.sim = new Sim();
   G.hud = new Hud();
+
+  // внешние камеры
+  G.extCameras = [
+    { name: 'НОС', offset: new THREE.Vector3(0, 2, -12), target: new THREE.Vector3(0, 0, -30), color: 0x1a2a3a },
+    { name: 'КОРМА', offset: new THREE.Vector3(0, 2, 14), target: new THREE.Vector3(0, 0, 30), color: 0x1a2a3a },
+    { name: 'БОРТ', offset: new THREE.Vector3(8, 3, 0), target: new THREE.Vector3(0, 0, 0), color: 0x1a2a3a },
+  ];
+  G.extCameraIdx = 0;
+  for (const ec of G.extCameras) {
+    ec.cam = new THREE.PerspectiveCamera(60, 4 / 3, 0.5, 200);
+    ec.rt = new THREE.WebGLRenderTarget(256, 192);
+  }
 
   buildWorld();
 
@@ -48,11 +61,13 @@ function init() {
     G.flags.started = true;
     G.sfx.init();
     canvas.requestPointerLock?.();
-    G.hud.log('⚓ Добро пожаловать на борт «Тифон-9». Идите в реакторный отсек (корма).', 'ok');
-    G.hud.log('Подсказка: смотрите на объекты — появится подсказка действия.', '');
+    G.hud.log('⚓ Добро пожаловать на борт «Тифон-9».', 'ok');
+    G.hud.log('База «Глубина» рядом (30м к востоку). Мониторы показывают все системы.', '');
+    G.hud.log('Начните с запуска реактора (реакторный отсек, кнопки 1→2→3).', '');
   });
 
   loop();
+  } catch(e) { console.error('INIT ERROR:', e); }
 }
 
 let elapsed = 0;
@@ -71,6 +86,25 @@ function loop() {
     updateDev();
     updateWorld(elapsed, dt);
 
+    // обновление внешних камер
+    if (G.extCameras && G.sim) {
+      const sim = G.sim;
+      const th = sim.heading * Math.PI / 180;
+      const boatPos = new THREE.Vector3(sim.boatX, -sim.depth, sim.boatZ);
+      for (const ec of G.extCameras) {
+        const offset = ec.offset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), th);
+        ec.cam.position.copy(boatPos).add(offset);
+        const target = ec.target.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), th).add(boatPos);
+        ec.cam.lookAt(target);
+      }
+      // рендер активной камеры в текстуру
+      const active = G.extCameras[G.extCameraIdx];
+      G.renderer.setRenderTarget(active.rt);
+      G.renderer.render(G.scene, active.cam);
+      G.renderer.setRenderTarget(null);
+      if (G.hud?.updateCameraFeed) G.hud.updateCameraFeed(active.rt.texture, active.name);
+    }
+
     // туман/окружение: снаружи светло, внутри темно
     if (G.flags.outside) {
       G.scene.background.setHex(0x87bfe8);
@@ -87,7 +121,9 @@ function loop() {
     if (lose) { G.sfx.explosion(); showEnd(false, lose); }
     else if (G.sim.isWin()) {
       G.sfx.splashUp();
-      showEnd(true, 'Субмарина «Тифон-9» всплыла. Реактор стабилен, все улучшения установлены, экипаж жив. Командование гордится вами, капитан!');
+      const missions = G.sim.missions.filter(m => m.completed).length;
+      const looted = G.sim.credits;
+      showEnd(true, `Субмарина «Тифон-9» всплыла.\nМиссий: ${missions}/${G.sim.missions.length}\nКредитов: ${looted}\nРеактор стабилен, экипаж жив. Командование гордится вами, капитан!`);
     }
   } else if (!G.flags.started) {
     // лёгкое вращение камеры на стартовом экране

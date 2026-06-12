@@ -3,9 +3,11 @@ export class Sfx {
   constructor() {
     this.ctx = null;
     this.fireNodes = new Map();
-    this.engine = null;     // узлы гула двигателя
-    this.reactor = null;    // узлы гула реактора
-    this.waterNode = null;  // шум воды при течах
+    this.engine = null;
+    this.reactor = null;
+    this.waterNode = null;
+    this.ventNode = null;
+    this.depthNode = null;
   }
 
   init() {
@@ -15,20 +17,33 @@ export class Sfx {
     this.master.gain.value = 1;
     this.master.connect(this.ctx.destination);
 
-    // фоновый тихий гул субмарины (вентиляция)
-    const o = this.ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 42;
-    const o2 = this.ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 57;
-    const g = this.ctx.createGain(); g.gain.value = 0.012;
-    const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 140;
-    o.connect(f); o2.connect(f); f.connect(g); g.connect(this.master);
-    o.start(); o2.start();
-
+    // вентиляция (фоновый гул)
+    this._buildVentilation();
     this._buildEngine();
     this._buildReactor();
     this._buildWater();
+    this._buildDepthCreak();
   }
 
-  // ---------- ДВИГАТЕЛЬ: постоянный луп, управляемый rpm ----------
+  // ---------- ВЕНТИЛЯЦИЯ: постоянный тихий гул ----------
+  _buildVentilation() {
+    const c = this.ctx;
+    const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 42;
+    const o2 = c.createOscillator(); o2.type = 'sine'; o2.frequency.value = 57;
+    const g = c.createGain(); g.gain.value = 0.012;
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 140;
+    o.connect(f); o2.connect(f); f.connect(g); g.connect(this.master);
+    o.start(); o2.start();
+    this.ventNode = { o, o2, g, f };
+  }
+
+  setVentilation(active) {
+    if (!this.ventNode) return;
+    const t = this.ctx.currentTime;
+    this.ventNode.g.gain.setTargetAtTime(active ? 0.012 : 0.003, t, 0.5);
+  }
+
+  // ---------- ДВИГАТЕЛЬ: луп с вариациями по глубине ----------
   _buildEngine() {
     const c = this.ctx;
     const o1 = c.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 30;
@@ -43,7 +58,6 @@ export class Sfx {
     this.engine = { o1, o2, lfo, lfoG, f, g };
   }
 
-  // вызывается каждый кадр: rpm 0..1
   setEngine(rpm, state) {
     if (!this.engine) return;
     const e = this.engine, t = this.ctx.currentTime;
@@ -67,14 +81,14 @@ export class Sfx {
     this.reactor = { o, o2, g };
   }
 
-  setReactor(level) { // 0..1
+  setReactor(level) {
     if (!this.reactor) return;
     const t = this.ctx.currentTime;
     this.reactor.g.gain.setTargetAtTime(level > 0 ? 0.008 + level * 0.02 : 0, t, 0.4);
     this.reactor.o2.frequency.setTargetAtTime(100 + level * 35, t, 0.4);
   }
 
-  // ---------- ВОДА: шум при наличии течей ----------
+  // ---------- ВОДА: шум при течах ----------
   _buildWater() {
     const c = this.ctx;
     const buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
@@ -88,9 +102,24 @@ export class Sfx {
     this.waterNode = { g };
   }
 
-  setWater(level) { // 0..1
+  setWater(level) {
     if (!this.waterNode) return;
     this.waterNode.g.gain.setTargetAtTime(level * 0.06, this.ctx.currentTime, 0.3);
+  }
+
+  // ---------- СКРИП КОРПУСА: усиливается с глубиной ----------
+  _buildDepthCreak() {
+    this._depthCreakTimer = 0;
+  }
+
+  setDepthCreak(depth, dt) {
+    if (!this.ctx) return;
+    this._depthCreakTimer += dt;
+    const interval = depth > 150 ? 2 : depth > 80 ? 5 : 12;
+    if (this._depthCreakTimer > interval && depth > 50) {
+      this._depthCreakTimer = 0;
+      this.hullCreak(depth / 200);
+    }
   }
 
   _env(freq, type, dur, vol = 0.2, slideTo = null) {
@@ -143,8 +172,9 @@ export class Sfx {
   }
 
   klaxon() {
-    this._env(310, 'sawtooth', 0.55, 0.3, 290);
-    setTimeout(() => this._env(260, 'sawtooth', 0.7, 0.3, 240), 600);
+    this._env(440, 'sawtooth', 0.6, 0.35, 380);
+    setTimeout(() => this._env(380, 'sawtooth', 0.8, 0.35, 320), 650);
+    setTimeout(() => this._env(330, 'sawtooth', 0.7, 0.3, 280), 1400);
   }
   alarm()       { this._env(880, 'square', 0.4, 0.12, 660); }
   warnBeep()    { this._env(1100, 'sine', 0.1, 0.1); }
@@ -162,6 +192,33 @@ export class Sfx {
   airlock()     { this._noise(1.5, 0.2, 800); this._env(90, 'sine', 1.4, 0.15, 60); }
   blow()        { this._noise(2.0, 0.3, 600); }
   sparkCrackle() { this._noise(0.08, 0.1, 6000); }
+
+  // переключатель тумблера
+  toggleSwitch() { this._env(1200, 'square', 0.04, 0.15); this._env(600, 'triangle', 0.06, 0.1); }
+
+  // балласт: заполнение/слив
+  ballastFill() {
+    this._noise(0.8, 0.12, 400);
+    this._env(80, 'sine', 0.6, 0.08, 60);
+  }
+  ballastDrain() {
+    this._noise(1.0, 0.1, 300);
+    this._env(60, 'sine', 0.8, 0.06, 40);
+  }
+
+  // сонар: пинг
+  sonarPing() {
+    this._env(1800, 'sine', 0.15, 0.2, 1200);
+    setTimeout(() => this._env(1200, 'sine', 0.3, 0.1, 800), 200);
+  }
+
+  // скрип двери
+  doorCreak() { this._env(120, 'sawtooth', 0.3, 0.06, 80); }
+
+  // вода: бульки
+  bubble() {
+    this._env(800 + Math.random() * 400, 'sine', 0.08, 0.05, 400 + Math.random() * 200);
+  }
 
   // зацикленный шум пожара
   fireLoopStart(id) {

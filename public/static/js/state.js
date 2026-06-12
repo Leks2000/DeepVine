@@ -8,8 +8,18 @@ export const G = {
   interactables: [],    // зарегистрированные интерактивные объекты
   exterior: null,       // группа внешнего мира (палуба, океан)
   interiorLights: [],   // лампы по отсекам
+  emergencyLights: [],  // аварийные лампы
+  emergencyOn: false,   // аварийное освещение активно
 
-  // игрок
+  // sonar
+  sonar: null,
+
+  // база
+  baseStation: null,
+  baseBeacon: null,
+
+  // лут
+  lootCrates: [],
   player: null,
   held: null,           // { type, mesh, data } — предмет в руках
 

@@ -6,6 +6,24 @@ body { font-family: 'Share Tech Mono', monospace; color: #cfd8dc; }
 #game-root { position: fixed; inset: 0; }
 #game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
 
+#crosshair {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  color: rgba(79, 195, 247, 0.6); font-size: 24px;
+  text-shadow: 0 0 8px rgba(79, 195, 247, 0.4);
+  pointer-events: none; z-index: 10;
+}
+
+#interact-hint {
+  position: absolute; left: 50%; top: 56%; transform: translateX(-50%);
+  font-size: 15px; color: #e1f5fe; background: rgba(4, 18, 28, 0.8);
+  border: 1px solid #1b4a66; border-radius: 6px; padding: 6px 16px;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.8); white-space: nowrap;
+  max-width: 80vw; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none; z-index: 10;
+}
+#interact-hint:empty { display: none; }
+#interact-hint.warn { color: #ffb74d; border-color: #8d5a1e; }
+
 /* ---------- экраны ---------- */
 #start-screen, #end-screen {
   position: fixed; inset: 0; z-index: 50;
@@ -40,67 +58,3 @@ kbd {
 }
 #btn-start:hover, .btn-restart:hover { transform: scale(1.05); box-shadow: 0 0 44px rgba(79, 195, 247, .8); }
 #end-text { max-width: 640px; line-height: 1.8; color: #90a4ae; font-size: 16px; }
-
-/* ---------- HUD ---------- */
-#hud { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
-
-#crosshair {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  color: rgba(79, 195, 247, .9); font-size: 22px; text-shadow: 0 0 6px rgba(79, 195, 247, .8);
-}
-#interact-hint {
-  position: absolute; left: 50%; top: 56%; transform: translateX(-50%);
-  font-size: 15px; color: #e1f5fe; background: rgba(4, 18, 28, .8);
-  border: 1px solid #1b4a66; border-radius: 6px; padding: 6px 16px;
-  text-shadow: 0 0 8px rgba(0, 0, 0, .8); white-space: nowrap;
-  max-width: 80vw; overflow: hidden; text-overflow: ellipsis;
-}
-#interact-hint:empty { display: none; }
-#interact-hint.warn { color: #ffb74d; border-color: #8d5a1e; }
-
-#hud-top { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; justify-content: space-between; gap: 12px; }
-#hud-bottom { position: absolute; bottom: 14px; left: 14px; right: 14px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
-
-.hud-box {
-  background: rgba(4, 18, 28, .78); border: 1px solid #14384e; border-radius: 6px;
-  padding: 10px 14px; font-size: 13px; backdrop-filter: blur(2px);
-}
-.val { color: #4fc3f7; }
-.eng-off { color: #78909c; }
-.eng-starting { color: #ffc400; animation: pulse 0.6s infinite; }
-.eng-on { color: #00e676; }
-.eng-stopping { color: #ff8a65; }
-.stress-warn { color: #ffb74d; }
-.stress-bad { color: #ff5252; animation: pulse 0.8s infinite; }
-
-#objectives .obj { color: #90a4ae; padding: 1px 0; }
-#objectives .obj.done { color: #00e676; text-decoration: line-through; }
-
-.bars { min-width: 290px; }
-.bar-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 12px; }
-.bar-row .bar {
-  flex: 1; height: 9px; background: #0a1a26; border: 1px solid #15384e; border-radius: 3px; overflow: hidden;
-}
-.fill { height: 100%; width: 100%; transition: width .3s; }
-.fill.ok { background: linear-gradient(90deg, #00c853, #00e676); }
-.fill.mid { background: linear-gradient(90deg, #f9a825, #ffd54f); }
-.fill.bad { background: linear-gradient(90deg, #d50000, #ff5252); animation: pulse 0.8s infinite; }
-@keyframes pulse { 50% { opacity: .55; } }
-#row-item { margin-top: 4px; border-top: 1px dashed #14384e; padding-top: 5px; }
-#h-charge { color: #ffd54f; }
-
-#mission-log { max-width: 460px; min-width: 280px; font-size: 12px; max-height: 132px; overflow: hidden; }
-.log-line { padding: 2px 0; color: #78909c; animation: fadein .4s; }
-.log-line.ok { color: #69f0ae; }
-.log-line.warn { color: #ffb74d; }
-.log-line.bad { color: #ff8a80; }
-@keyframes fadein { from { opacity: 0; transform: translateY(-6px); } }
-
-/* тревога и виньетка */
-#alert-flash { position: absolute; inset: 0; background: rgba(255, 30, 30, .25); opacity: 0; pointer-events: none; }
-#alert-flash.on { animation: alertflash 1.6s ease-out; }
-@keyframes alertflash { 0%, 30%, 60% { opacity: .55; } 15%, 45%, 100% { opacity: 0; } }
-#damage-vignette {
-  position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .5s;
-  background: radial-gradient(ellipse at center, transparent 52%, rgba(160, 0, 0, .6) 100%);
-}

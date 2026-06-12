@@ -1,6 +1,6 @@
 // ============ МИР: интерьер субмарины (5 отсеков + шлюзовая камера) + подводный мир ============
 import * as THREE from 'three';
-import { G, addCollider } from './state.js';
+import { G, addCollider, registerInteractable } from './state.js';
 
 // Интерьер: труба вдоль оси Z. Мостик в носу с иллюминаторами, торпедный — нижняя палуба под мостиком.
 //  МОСТИК z[-18,-2] · ЖИЛОЙ z[-2,6] · РЕАКТОР z[6,14] · МАШИННЫЙ z[14,22] · ШЛЮЗ z[22,25]
@@ -37,6 +37,11 @@ function buildMaterials() {
   MAT.deck   = new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.6, roughness: 0.6 });
   MAT.ocean  = new THREE.MeshStandardMaterial({ color: 0x0a3550, metalness: 0.1, roughness: 0.4, transparent: true, opacity: 0.95 });
   MAT.water  = new THREE.MeshStandardMaterial({ color: 0x1565c0, transparent: true, opacity: 0.45, metalness: 0.2, roughness: 0.2 });
+  MAT.sonarRing = new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 0.8, transparent: true, opacity: 0.6 });
+  MAT.sonarBg = new THREE.MeshStandardMaterial({ color: 0x0a1a14, metalness: 0.8, roughness: 0.4 });
+  MAT.monitorFrame = new THREE.MeshStandardMaterial({ color: 0x1a2228, metalness: 0.7, roughness: 0.5 });
+  MAT.monitorScreen = new THREE.MeshStandardMaterial({ color: 0x06281e, emissive: 0x00e676, emissiveIntensity: 0.45 });
+  MAT.emergencyLight = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff2200, emissiveIntensity: 0.9 });
 }
 
 function box(w, h, d, mat, x, y, z, parent, collide = false) {
@@ -83,7 +88,7 @@ function buildHullInterior() {
   box(w, 0.2, len, MAT.floor, 0, -0.1, zc);
   box(w, 0.2, len, MAT.hull, 0, h + 0.1, zc);
 
-  // --- боковые стены посегментно: в мостике — окна! ---
+  // --- боковые стены посегментно: в мостике — окна, в остальных — маленькие иллюминаторы ---
   for (const c of COMPARTMENTS) {
     if (c.lowerDeck) continue;
     const segLen = c.z1 - c.z0, segZc = (c.z0 + c.z1) / 2;
@@ -102,6 +107,37 @@ function buildHullInterior() {
         // рама
         box(0.24, 0.08, winZ1 - winZ0 + 0.15, MAT.brass, X, 1.25, (winZ0 + winZ1) / 2);
         box(0.24, 0.08, winZ1 - winZ0 + 0.15, MAT.brass, X, 2.35, (winZ0 + winZ1) / 2);
+      } else if (c.id === 'living' || c.id === 'reactor') {
+        // маленькие круглые иллюминаторы в жилом и реакторном
+        // сплошная стена
+        box(0.2, h, segLen, MAT.hull, X, h / 2, segZc);
+        // иллюминаторы поверх стены
+        const winCount = 3;
+        const winSpacing = (segLen - 3) / winCount;
+        for (let i = 0; i < winCount; i++) {
+          const wz = c.z0 + 1.5 + i * winSpacing;
+          // иллюминатор (круглое стекло)
+          const porthole = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.06, 14), MAT.glass);
+          porthole.rotation.x = Math.PI / 2; porthole.position.set(X, 1.6, wz);
+          porthole.renderOrder = 5;
+          G.scene.add(porthole);
+          // рама иллюминатора
+          const frame = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.035, 8, 16), MAT.brass);
+          frame.rotation.y = Math.PI / 2; frame.position.set(sx * (w / 2 + 0.04), 1.6, wz);
+          G.scene.add(frame);
+        }
+      } else if (c.id === 'engine') {
+        // машинный: одно маленькое окно + сплошная стена (тут оборудование)
+        box(0.2, h, segLen, MAT.hull, X, h / 2, segZc);
+        // один иллюминатор
+        const wz = segZc;
+        const porthole = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 12), MAT.glass);
+        porthole.rotation.x = Math.PI / 2; porthole.position.set(X, 1.8, wz);
+        porthole.renderOrder = 5;
+        G.scene.add(porthole);
+        const frame = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.03, 8, 14), MAT.brass);
+        frame.rotation.y = Math.PI / 2; frame.position.set(sx * (w / 2 + 0.04), 1.8, wz);
+        G.scene.add(frame);
       } else {
         box(0.2, h, segLen, MAT.hull, X, h / 2, segZc);
       }
@@ -111,24 +147,34 @@ function buildHullInterior() {
     addCollider(new THREE.Vector3(w / 2, 0, c.z0), new THREE.Vector3(w / 2 + 0.2, h, c.z1));
   }
 
-  // --- НОС МОСТИКА: широкий лобовой иллюминатор (~180° обзор) ---
+  // --- НОС МОСТИКА: полноценная стена с панорамным окном ---
   {
-    const Z = z0 - 0.08;
-    const winH = 1.55, winY = 1.55;
-    box(w, 0.42, 0.18, MAT.bulk, 0, 0.21, Z, null, true);                    // низкий нос
-    box(w, h - winY - 0.55, 0.18, MAT.bulk, 0, (h + winY + 0.55) / 2, Z, null, true); // верх
-    // панорамное стекло на всю ширину
-    const glass = new THREE.Mesh(new THREE.BoxGeometry(w - 0.35, winH, 0.07), MAT.glass);
+    const Z = z0 - 0.06;
+    const winH = 1.7, winY = 1.5;
+    const winW = w * 0.65;
+    // нижняя часть носа — полная ширина
+    box(w, 0.35, 0.16, MAT.bulk, 0, 0.175, Z, null, true);
+    // верхняя часть носа — полная ширина
+    box(w, h - winY - 0.45, 0.16, MAT.bulk, 0, (h + winY + 0.45) / 2, Z, null, true);
+    // боковые стенки по краям окна (от края стекла до края корпуса)
+    const sideW = (w - winW) / 2;
+    for (const sx of [-1, 1]) {
+      const sideX = sx * (winW / 2 + sideW / 2);
+      box(sideW, winH, 0.16, MAT.bulk, sideX, winY, Z, null, true);
+    }
+    // панорамное стекло
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(winW, winH, 0.06), MAT.glass);
     glass.position.set(0, winY, Z + 0.04); glass.renderOrder = 5;
     G.scene.add(glass);
     G.bridgeGlass = glass;
-    box(w - 0.2, 0.1, 0.12, MAT.brass, 0, winY - winH / 2 - 0.05, Z + 0.02);
-    box(w - 0.2, 0.1, 0.12, MAT.brass, 0, winY + winH / 2 + 0.05, Z + 0.02);
+    // рама
+    box(winW + 0.1, 0.09, 0.12, MAT.brass, 0, winY - winH / 2 - 0.04, Z + 0.02);
+    box(winW + 0.1, 0.09, 0.12, MAT.brass, 0, winY + winH / 2 + 0.04, Z + 0.02);
     for (const sx of [-1, 1]) {
-      box(0.12, winH + 0.1, 0.12, MAT.brass, sx * (w / 2 - 0.06), winY, Z + 0.02);
+      box(0.1, winH + 0.08, 0.1, MAT.brass, sx * (winW / 2), winY, Z + 0.02);
     }
     const sCmd = makeSign('COMMAND · ОБЗОР ВПЕРЁД', 2.4, 0.26);
-    sCmd.position.set(0, 2.75, z0 + 1.5); G.scene.add(sCmd);
+    sCmd.position.set(0, 2.8, z0 + 1.5); G.scene.add(sCmd);
   }
 
   // --- НИЖНЯЯ ПАЛУБА: торпедный отсек (под мостиком) ---
@@ -143,8 +189,11 @@ function buildHullInterior() {
       const step = box(0.7, 0.08, 0.35, MAT.brass, 2.1, 0.15 - i * 0.22, -10.2 - i * 0.35);
       step.rotation.x = -0.35;
     }
+    // перила лестницы
+    cyl(0.02, 1.5, MAT.brass, 1.75, 0.0, -10.8, null, 0, 0.35);
+    cyl(0.02, 1.5, MAT.brass, 2.45, 0.0, -10.8, null, 0, 0.35);
     const sTorp = makeSign('↓ TORPEDO', 1.3, 0.28);
-    sTorp.position.set(0, 2.55, -10.05); sTorp.rotation.y = Math.PI;
+    sTorp.position.set(0, 2.6, -10.05); sTorp.rotation.y = Math.PI;
     G.scene.add(sTorp);
     const sTorp2 = makeSign('TORPEDO', 1.2, 0.26, '#0d1418', '#80d8ff');
     sTorp2.position.set(0, -0.35, tzc); G.scene.add(sTorp2);
@@ -162,8 +211,11 @@ function buildHullInterior() {
       const step = box(0.75, 0.08, 0.35, MAT.brass, -2.1, 0.15 - i * 0.2, ez0 + 0.3 + i * 0.35);
       step.rotation.x = 0.35;
     }
+    // перила лестницы
+    cyl(0.02, 1.8, MAT.brass, -1.7, 0.0, ez0 + 1.2, null, 0, -0.35);
+    cyl(0.02, 1.8, MAT.brass, -2.5, 0.0, ez0 + 1.2, null, 0, -0.35);
     const sEng = makeSign('↓ ENGINE ROOM', 1.4, 0.28);
-    sEng.position.set(0, 2.55, ez0 + 0.1); sEng.rotation.y = Math.PI;
+    sEng.position.set(0, 2.6, ez0 + 0.1); sEng.rotation.y = Math.PI;
     G.scene.add(sEng);
     const sEng2 = makeSign('ENGINE ROOM', 1.3, 0.26, '#0d1418', '#80d8ff');
     sEng2.position.set(0, -0.35, ezc); G.scene.add(sEng2);
@@ -200,14 +252,34 @@ function buildHullInterior() {
     const warnL = new THREE.PointLight(0xff5544, 4, 6, 1.8);
     warnL.position.set(0, h - 0.4, azc); G.scene.add(warnL);
     G.airlockLamp = warnL;
+    // манометр давления
+    const gauge = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.04, 14), MAT.dark);
+    gauge.rotation.x = Math.PI / 2;
+    gauge.position.set(aw / 2 - 0.3, 1.8, azc);
+    G.scene.add(gauge);
+    // табличка WARNING
+    const sWarn = makeSign('⚠ DANGER · DIVE SUIT REQUIRED', 1.8, 0.2, '#3a0a0a', '#ff4444');
+    sWarn.position.set(0, 2.6, azc);
+    G.scene.add(sWarn);
   }
 
-  // скруглённые «рёбра» корпуса каждые 4 м
-  for (let z = z0 + 2; z < z1; z += 4) {
-    box(w - 0.1, 0.12, 0.12, MAT.dark, 0, h - 0.06, z);
+  // скруглённые «рёбра» корпуса каждые 2.5 м (чаще = солиднее)
+  for (let z = z0 + 1; z < z1; z += 2.5) {
+    box(w - 0.05, 0.14, 0.1, MAT.dark, 0, h - 0.07, z);
+    box(w - 0.05, 0.14, 0.1, MAT.dark, 0, 0.07, z);
   }
 
-  // трубы вдоль потолка
+  // наружные трубы (по бортам, вдоль корпуса)
+  cyl(0.06, len, MAT.pipe2, -w / 2 - 0.12, h * 0.6, zc, null, 0, Math.PI / 2);
+  cyl(0.06, len, MAT.pipe2,  w / 2 + 0.12, h * 0.6, zc, null, 0, Math.PI / 2);
+  // трубы на днище
+  cyl(0.05, len, MAT.pipe, -w / 2 + 0.3, -0.15, zc, null, 0, Math.PI / 2);
+  cyl(0.05, len, MAT.pipe,  w / 2 - 0.3, -0.15, zc, null, 0, Math.PI / 2);
+
+  // киль (нижняя гребная пластина)
+  box(0.08, 0.5, len * 0.7, MAT.dark, 0, -0.35, zc + 2);
+
+  // трубы вдоль потолка (внутри)
   cyl(0.09, len, MAT.pipe,  -w / 2 + 0.5, h - 0.25, zc, null, 0, Math.PI / 2);
   cyl(0.09, len, MAT.pipe2, -w / 2 + 0.8, h - 0.45, zc, null, 0, Math.PI / 2);
   cyl(0.07, len, MAT.pipe2,  w / 2 - 0.5, h - 0.25, zc, null, 0, Math.PI / 2);
@@ -219,9 +291,11 @@ function buildHullInterior() {
     const comp = COMPARTMENTS.find(c => c.id === cid);
     if (!comp) continue;
     const z = comp.z0;
-    const side = (w - 1.2) / 2;
-    box(side, h, 0.25, MAT.bulk, -(1.2 / 2 + side / 2), h / 2, z, null, true);
-    box(side, h, 0.25, MAT.bulk,  (1.2 / 2 + side / 2), h / 2, z, null, true);
+    // боковые стенки переборки — делаем уже, чтобы не перекрывать лестницы
+    const sideW = 1.6;
+    const sideX = 1.2 / 2 + sideW / 2;
+    box(sideW, h, 0.25, MAT.bulk, -sideX, h / 2, z, null, true);
+    box(sideW, h, 0.25, MAT.bulk,  sideX, h / 2, z, null, true);
     box(1.2, h - 2.15, 0.25, MAT.bulk, 0, h - (h - 2.15) / 2, z, null, false);
     box(1.3, 0.18, 0.3, MAT.brass, 0, 0.09, z);
     // жёлтая окантовка проёма
@@ -231,11 +305,11 @@ function buildHullInterior() {
     // таблички с обеих сторон + лампа над проёмом
     const prev = COMPARTMENTS[COMPARTMENTS.indexOf(comp) - 1];
     const sFwd = makeSign('→ ' + signNames[comp.id]);
-    sFwd.position.set(0, 2.55, z - 0.16); sFwd.rotation.y = Math.PI;
+    sFwd.position.set(0, 2.65, z - 0.2); sFwd.rotation.y = Math.PI;
     G.scene.add(sFwd);
     if (prev) {
       const sBack = makeSign('→ ' + (signNames[prev.id] || prev.name));
-      sBack.position.set(0, 2.55, z + 0.16);
+      sBack.position.set(0, 2.65, z + 0.2);
       G.scene.add(sBack);
     }
     const doorLamp = new THREE.PointLight(0xffc400, 1.5, 3.2, 2);
@@ -243,10 +317,10 @@ function buildHullInterior() {
   }
   // табличка ШЛЮЗ над кормовым проёмом
   const sAir = makeSign('→ ШЛЮЗ', 1.3, 0.3);
-  sAir.position.set(0, 2.55, z1 - 0.05); sAir.rotation.y = Math.PI;
+  sAir.position.set(0, 2.65, z1 - 0.05); sAir.rotation.y = Math.PI;
   G.scene.add(sAir);
   const sAir2 = makeSign('AIRLOCK', 1.3, 0.28);
-  sAir2.position.set(0, 2.55, 22.1);
+  sAir2.position.set(0, 2.65, 22.1);
   G.scene.add(sAir2);
 }
 
@@ -261,10 +335,12 @@ function buildLights() {
       continue;
     }
     const zc = (c.z0 + c.z1) / 2;
+    // основной свет
     const lamp = new THREE.PointLight(0xffe7c4, 9, 11, 1.6);
     lamp.position.set(0, HULL.h - 0.35, zc);
     G.scene.add(lamp);
     G.interiorLights.push({ light: lamp, comp: c.id, base: 9 });
+    // плафон
     box(0.5, 0.08, 0.5, MAT.brass, 0, HULL.h - 0.12, zc);
     const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8),
       new THREE.MeshStandardMaterial({ color: 0xfff3d0, emissive: 0xffd089, emissiveIntensity: 1.4 }));
@@ -281,6 +357,26 @@ function buildLights() {
     G.scene.add(m);
     G.waterMeshes[c.id] = m;
   }
+
+  // --- разметка пола (жёлтые линии безопасности) ---
+  for (const c of COMPARTMENTS) {
+    if (c.lowerDeck) continue;
+    const zc = (c.z0 + c.z1) / 2;
+    const segLen = c.z1 - c.z0;
+    // центральная линия
+    box(0.06, 0.01, segLen - 1, MAT.hazard, 0, -0.04, zc);
+    // боковые линии
+    box(0.04, 0.01, segLen - 1, MAT.hazard, -1.5, -0.04, zc);
+    box(0.04, 0.01, segLen - 1, MAT.hazard,  1.5, -0.04, zc);
+  }
+
+  // --- вентиляционные решётки на потолке ---
+  for (let z = HULL.z0 + 3; z < HULL.z1; z += 6) {
+    const vent = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.04, 0.8),
+      new THREE.MeshStandardMaterial({ color: 0x3a4448, metalness: 0.8, roughness: 0.5 }));
+    vent.position.set(0, HULL.h + 0.08, z);
+    G.scene.add(vent);
+  }
 }
 
 // ---------- РЕКВИЗИТ ПО ОТСЕКАМ ----------
@@ -289,29 +385,117 @@ function buildProps() {
 
   const ly = -0.55;
 
-  // === МОСТИК: консоли по бокам, центр свободен для обзора вперёд ===
+  // === МОСТИК: консоли по бокам + sonar ===
   for (const sx of [-1, 1]) {
     box(1.5, 0.85, 0.75, MAT.dark, sx * 2.0, 0.45, -8.5, null, true);
     box(1.5, 0.5, 0.65, MAT.bulk, sx * 2.0, 1.15, -8.65);
     const scr = box(0.95, 0.55, 0.06, MAT.screenOn, sx * 2.0, 1.42, -8.35);
     scr.rotation.x = -0.2;
+    // кнопки на консоли
+    for (let i = 0; i < 3; i++) {
+      const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 8),
+        new THREE.MeshStandardMaterial({ color: i === 0 ? 0x2e7d32 : i === 1 ? 0xc62828 : 0xf9a825 }));
+      btn.position.set(sx * 2.0, 0.92, -8.8 + i * 0.15);
+      G.scene.add(btn);
+    }
   }
+
+  // --- SONAR (кольцо) на правой консоли ---
+  {
+    const sonarGrp = new THREE.Group();
+    sonarGrp.position.set(2.0, 1.4, -8.6);
+    sonarGrp.rotation.y = -Math.PI / 2 + 0.3;
+    sonarGrp.rotation.x = -0.15;
+    // корпус sonar
+    const sonarBody = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.12, 22), MAT.sonarBg);
+    sonarBody.rotation.x = Math.PI / 2;
+    sonarGrp.add(sonarBody);
+    // кольцо sonar
+    const sonarRing = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.025, 8, 36), MAT.sonarRing);
+    sonarRing.position.z = 0.065;
+    sonarGrp.add(sonarRing);
+    // второй ring (внутренний)
+    const sonarRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.015, 6, 28), MAT.sonarRing);
+    sonarRing2.position.z = 0.065;
+    sonarGrp.add(sonarRing2);
+    // линия-сканер (поворачивается)
+    const scanLine = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.015, 0.01), MAT.sonarRing);
+    scanLine.position.z = 0.065;
+    sonarGrp.add(scanLine);
+    // метки POI на sonar
+    const dotGeo = new THREE.CircleGeometry(0.025, 8);
+    const dotMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.9 });
+    const dots = [];
+    if (G.poi) {
+      for (const p of G.poi) {
+        const dot = new THREE.Mesh(dotGeo, dotMat.clone());
+        dot.position.z = 0.065;
+        sonarGrp.add(dot);
+        dots.push({ dot, poi: p });
+      }
+    }
+    G.scene.add(sonarGrp);
+    G.sonar = { grp: sonarGrp, scanLine, dots, ring: sonarRing };
+    const sSonar = makeSign('SONAR', 0.8, 0.2, '#0a1a14', '#00ff88');
+    sSonar.position.set(2.0, 1.72, -8.55);
+    sSonar.rotation.y = -Math.PI / 2 + 0.3;
+    sSonar.rotation.x = -0.2;
+    G.scene.add(sSonar);
+  }
+
   // центральный штурвалный пост (не блокирует окно)
   box(1.2, 0.9, 0.55, MAT.dark, 0, 0.45, -7.8, null, true);
   box(1.1, 0.03, 0.5, MAT.yellow, 0, 0.92, -7.8);
 
-  // === ЖИЛОЙ: койки, стол, шкафы ===
+  // --- АВАРИЙНЫЕ ЛАМПЫ (красные, на потолке каждого отсека) ---
+  G.emergencyLights = [];
+  for (const c of COMPARTMENTS) {
+    if (c.lowerDeck) continue;
+    const zc = (c.z0 + c.z1) / 2;
+    const eLamp = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 10), MAT.emergencyLight);
+    eLamp.position.set(w / 2 - 0.5, HULL.h - 0.06, zc - 2);
+    eLamp.rotation.x = Math.PI / 2;
+    G.scene.add(eLamp);
+    const eLight = new THREE.PointLight(0xff2200, 0, 5, 1.8);
+    eLight.position.set(w / 2 - 0.5, HULL.h - 0.2, zc - 2);
+    G.scene.add(eLight);
+    G.emergencyLights.push({ mesh: eLamp, light: eLight });
+    // вторая лампа с другой стороны
+    const eLamp2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 10), MAT.emergencyLight);
+    eLamp2.position.set(-w / 2 + 0.5, HULL.h - 0.06, zc + 2);
+    eLamp2.rotation.x = Math.PI / 2;
+    G.scene.add(eLamp2);
+    const eLight2 = new THREE.PointLight(0xff2200, 0, 5, 1.8);
+    eLight2.position.set(-w / 2 + 0.5, HULL.h - 0.2, zc + 2);
+    G.scene.add(eLight2);
+    G.emergencyLights.push({ mesh: eLamp2, light: eLight2 });
+  }
+  G.emergencyOn = false;
+
+  // === ЖИЛОЙ: койки, стол, шкафы, тумбочки ===
   for (const [x, z] of [[-2.3, 0.5], [-2.3, 3.5]]) {
     box(1.2, 0.25, 2.2, MAT.dark, x, 0.5, z, null, true);
     box(1.15, 0.12, 2.1, MAT.green, x, 0.66, z);
-    box(1.2, 0.25, 2.2, MAT.dark, x, 1.7, z);
+    box(1.2, 0.25, 2.2, MAT.dark, x, 1.7, z, null, true);
     box(1.15, 0.12, 2.1, MAT.green, x, 1.86, z);
+    // подушки
+    box(0.35, 0.06, 0.5, MAT.green, x, 0.72, z - 0.6);
+    box(0.35, 0.06, 0.5, MAT.green, x, 1.92, z - 0.6);
   }
+  // стол
   box(1.6, 0.08, 1.0, MAT.brass, 2.2, 0.85, 2, null, false);
   box(0.15, 0.85, 0.15, MAT.dark, 2.2, 0.42, 2, null, true);
+  // стул
+  box(0.45, 0.06, 0.45, MAT.dark, 2.2, 0.55, 3.2);
+  box(0.45, 0.5, 0.06, MAT.dark, 2.2, 0.8, 3.45);
+  // шкаф
   box(1.4, 2.2, 0.5, MAT.bulk, 2.5, 1.1, 4.8, null, true);
+  // тумбочка
+  box(0.5, 0.6, 0.4, MAT.dark, -2.5, 0.3, 5.5, null, true);
+  // книга на тумбочке
+  box(0.25, 0.04, 0.18, MAT.red, -2.5, 0.62, 5.5);
 
-  // === РЕАКТОРНЫЙ: реактор-цилиндр + панели ===
+  // === РЕАКТОРНЫЙ: реактор-цилиндр + панели + трубы ===
   cyl(0.85, 2.7, MAT.hull, -1.9, 1.35, 10);
   addCollider(new THREE.Vector3(-2.9, 0, 9), new THREE.Vector3(-0.9, 2.7, 11));
   const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.87, 0.87, 0.5, 18),
@@ -322,16 +506,29 @@ function buildProps() {
     const r = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.06, 8, 26), MAT.brass);
     r.position.set(-1.9, y, 10); r.rotation.x = Math.PI / 2; G.scene.add(r);
   }
+  // панель управления реактором
   box(2.4, 1.6, 0.3, MAT.dark, 2.85, 1.5, 10, null, true);
+  // трубы от реактора
+  cyl(0.06, 4, MAT.pipe, -1.9, 2.5, 10, null, 0, Math.PI / 2);
+  cyl(0.06, 4, MAT.pipe, -1.9, 0.2, 10, null, 0, Math.PI / 2);
+  // индикаторная панель
+  for (let i = 0; i < 4; i++) {
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 5),
+      new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0x000000 }));
+    led.position.set(2.85, 1.8 - i * 0.2, 9.85);
+    G.scene.add(led);
+  }
 
   // === МАШИННЫЙ (верх): только проход и люк вниз ===
   box(1.2, 0.08, 1.6, MAT.brass, -2.0, 0.04, 15.2);
 
-  // === МАШИННЫЙ (низ): дизели + место для щита ===
+  // === МАШИННЫЙ (низ): дизели + место для щита + трубы ===
   const ely = -0.55;
   for (const x of [-2.1, 2.1]) {
     box(1.2, 1.2, 2.6, MAT.dark, x, ely, 18, null, true);
     for (let i = 0; i < 3; i++) cyl(0.14, 0.45, MAT.brass, x - 0.35 + i * 0.35, ely + 0.75, 18);
+    // трубы от дизелей
+    cyl(0.05, 3, MAT.pipe, x, ely + 1.3, 18, null, 0, Math.PI / 2);
   }
   G.engineBlocks = true;
   // пульт двигателя — крупная панель в центре нижнего машинного (controls.js)
@@ -339,6 +536,16 @@ function buildProps() {
   panelBg.position.set(0, ely + 0.85, 16.2); G.scene.add(panelBg);
   const sEl = makeSign('⚡ ЭЛЕКТРОЩИТ / ДВИГАТЕЛЬ', 1.6, 0.3);
   sEl.position.set(0, ely + 1.55, 16.14); G.scene.add(sEl);
+  // манометры на стене
+  for (let i = 0; i < 3; i++) {
+    const gauge = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.04, 12), MAT.dark);
+    gauge.rotation.x = Math.PI / 2;
+    gauge.position.set(1.5, 0.5 + i * 0.3, 17.5);
+    G.scene.add(gauge);
+    const needle = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.1, 0.01), MAT.red);
+    needle.position.set(1.5, 0.5 + i * 0.3, 17.48);
+    G.scene.add(needle);
+  }
 
   // === ТОРПЕДНЫЕ АППАРАТЫ (низ, нос) — управление в controls.js ===
   for (const x of [-2.0, 2.0]) {
@@ -346,9 +553,17 @@ function buildProps() {
     addCollider(new THREE.Vector3(x - 0.42, -1.1, -16.8), new THREE.Vector3(x + 0.42, 0.2, -14.2));
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.14, 16), MAT.brass);
     cap.position.set(x, ly, -14.3); cap.rotation.x = Math.PI / 2; G.scene.add(cap);
+    // направляющие
+    cyl(0.04, 2.5, MAT.pipe2, x - 0.25, ly, -15.5, null, 0, Math.PI / 2);
+    cyl(0.04, 2.5, MAT.pipe2, x + 0.25, ly, -15.5, null, 0, Math.PI / 2);
   }
   cyl(0.2, 2.5, MAT.dark, -2.35, ly, -13.5, null, 0, Math.PI / 2);
   cyl(0.2, 2.5, MAT.dark, 2.35, ly, -13.5, null, 0, Math.PI / 2);
+  // стойка с торпедами (запас)
+  box(0.8, 1.5, 0.8, MAT.dark, 0, ly + 0.5, -16.5);
+  for (let i = 0; i < 2; i++) {
+    cyl(0.12, 1.2, MAT.brass, -0.2 + i * 0.4, ly + 0.8, -16.5, null, 0, Math.PI / 2);
+  }
 }
 
 // ---------- ПОДВОДНЫЙ МИР (виден через иллюминаторы) ----------
@@ -365,6 +580,56 @@ function buildUnderwater() {
     new THREE.MeshBasicMaterial({ color: 0x3d7ba6, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
   surf.rotation.x = -Math.PI / 2; surf.position.y = 0;
   uw.add(surf);
+
+  // === БАЗА «ГЛУБИНА» — подводная станция (стартовая точка) ===
+  {
+    const baseMat = new THREE.MeshStandardMaterial({ color: 0x3a4a52, metalness: 0.6, roughness: 0.5 });
+    const baseGroup = new THREE.Group();
+    baseGroup.position.set(30, -SEABED_DEPTH + 12, 40);
+    // основной модуль — цилиндр
+    const mainMod = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 18, 16), baseMat);
+    mainMod.rotation.x = Math.PI / 2;
+    baseGroup.add(mainMod);
+    // купол наверху
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(6, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x2a3a42, metalness: 0.7, roughness: 0.4 }));
+    dome.position.y = 0;
+    baseGroup.add(dome);
+    // шлюз (горизонтальный цилиндр)
+    const lockMod = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 10, 12), baseMat);
+    lockMod.rotation.z = Math.PI / 2;
+    lockMod.position.set(-14, -4, 0);
+    baseGroup.add(lockMod);
+    // опоры (ножки)
+    for (const [x, z] of [[-4, -4], [4, -4], [-4, 4], [4, 4]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 14, 8), baseMat);
+      leg.position.set(x, -7, z);
+      baseGroup.add(leg);
+    }
+    // фонари
+    for (const [x, z, c] of [[-6, 0, 0x00e676], [6, 0, 0x00e676], [0, 8, 0xffc400], [0, -8, 0xffc400]]) {
+      const lt = new THREE.PointLight(c, 80, 60, 1.5);
+      lt.position.set(x, 4, z);
+      baseGroup.add(lt);
+    }
+    // антенна
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.08, 8, 6), baseMat);
+    ant.position.set(0, 10, 0);
+    baseGroup.add(ant);
+    // табличка
+    uw.add(baseGroup);
+    G.baseStation = baseGroup;
+
+    // маяк базы (светящийся)
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.5, 10, 8),
+      new THREE.MeshBasicMaterial({ color: 0x00e676 }));
+    beacon.position.set(30, -SEABED_DEPTH + 22, 40);
+    uw.add(beacon);
+    const beaconLt = new THREE.PointLight(0x00e676, 300, 150, 1.6);
+    beacon.position.copy(beacon.position);
+    uw.add(beaconLt);
+    G.baseBeacon = { mesh: beacon, light: beaconLt };
+  }
 
   // дно
   const geo = new THREE.PlaneGeometry(1600, 1600, 48, 48);
@@ -403,13 +668,14 @@ function buildUnderwater() {
     uw.add(wreck);
   }
 
-  // точки интереса — светящиеся маяки
+  // точки интереса — светящиеся маяки + лут
   G.poi = [];
   const poiDefs = [
     { x: 120, z: -180, color: 0x00e676, name: 'СТАНЦИЯ «ГЛУБИНА»' },
     { x: -240, z: -90, color: 0xffc400, name: 'ЗАТОНУВШИЙ СУХОГРУЗ' },
     { x: 60, z: 300, color: 0xff5252, name: 'ПОДВОДНЫЙ ВУЛКАН' },
   ];
+  G.lootCrates = [];
   for (const p of poiDefs) {
     const grp = new THREE.Group();
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(2.4, 12, 10),
@@ -423,6 +689,37 @@ function buildUnderwater() {
     grp.position.set(p.x, -SEABED_DEPTH + 28, p.z);
     uw.add(grp);
     G.poi.push({ grp, beacon, ...p });
+
+    // лут-контейнеры рядом с POI
+    const crateCount = 2 + (Math.random() * 2 | 0);
+    for (let i = 0; i < crateCount; i++) {
+      const crateGrp = new THREE.Group();
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.9),
+        new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.8, metalness: 0.3 }));
+      crateGrp.add(crate);
+      // полоска
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.08, 0.92),
+        new THREE.MeshStandardMaterial({ color: 0xffc400, emissive: 0xffc400, emissiveIntensity: 0.2 }));
+      stripe.position.y = 0.1;
+      crateGrp.add(stripe);
+      const lootX = p.x + (Math.random() - 0.5) * 30;
+      const lootZ = p.z + (Math.random() - 0.5) * 30;
+      crateGrp.position.set(lootX, -SEABED_DEPTH + 1.5, lootZ);
+      crateGrp.rotation.y = Math.random() * Math.PI;
+      uw.add(crateGrp);
+      G.lootCrates.push({ grp: crateGrp, pos: new THREE.Vector3(lootX, -SEABED_DEPTH + 1.5, lootZ), looted: false });
+    }
+  }
+
+  // жёлтые метки лута на сонаре
+  if (G.sonar) {
+    const dotGeo = new THREE.CircleGeometry(0.015, 6);
+    for (const crate of G.lootCrates) {
+      const dot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.7 }));
+      dot.position.z = 0.065;
+      G.sonar.grp.add(dot);
+      crate.sonarDot = dot;
+    }
   }
 
   // планктон-частицы вокруг лодки (в сцене, не в uw — чтобы всегда рядом)
@@ -468,8 +765,19 @@ function buildExterior() {
   // рубка на палубе
   const sail = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.8, 4), MAT.hull);
   sail.position.set(0, deckY + 1.5, 22); g.add(sail);
+  // окно рубки
+  const sailGlass = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 0.06), MAT.glass);
+  sailGlass.position.set(0, deckY + 2.2, 20.0); g.add(sailGlass);
+  // антенна на рубке
+  cyl(0.04, 1.5, MAT.dark, 0.6, deckY + 3.5, 22, g);
   // перископ
   cyl(0.07, 2.2, MAT.dark, 0, deckY + 2.8, 21.5, g);
+  // гакенкорос (крюк спереди рубки)
+  cyl(0.03, 0.6, MAT.brass, 0, deckY + 0.3, 19.8, g);
+
+  // палубные трубы
+  cyl(0.04, 6, MAT.pipe2, -1.8, deckY + 0.15, 25, g, Math.PI / 2, 0);
+  cyl(0.04, 6, MAT.pipe2,  1.8, deckY + 0.15, 25, g, Math.PI / 2, 0);
 
   // океан вокруг (поверхность)
   const ocean = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 32, 32), MAT.ocean);
@@ -514,14 +822,19 @@ const _tmp = new THREE.Vector3();
 export function updateWorld(t, dt) {
   const sim = G.sim;
 
-  // волны океана на палубе
+  // волны океана на палубе + визуальное движение через окна
   if (G.oceanMesh && G.flags.outside && sim.depth <= 0.5) {
     const pos = G.oceanMesh.geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), y = pos.getY(i);
-      pos.setZ(i, Math.sin(x * 0.3 + t * 1.2) * 0.25 + Math.cos(y * 0.25 + t * 0.9) * 0.2);
+      pos.setZ(i, Math.sin(x * 0.3 + t * 1.2 + sim.boatX * 0.01) * 0.25 + Math.cos(y * 0.25 + t * 0.9 + sim.boatZ * 0.01) * 0.2);
     }
     pos.needsUpdate = true;
+  }
+  // визуальное движение: планктон дрейфует мимо при ходу
+  if (G.plankton && sim) {
+    G.plankton.position.z += sim.speed * 0.15 * dt;
+    if (Math.abs(G.plankton.position.z) > 20) G.plankton.position.z = 0;
   }
 
   // внешнее освещение: только на поверхности
@@ -541,6 +854,13 @@ export function updateWorld(t, dt) {
       const s = 1 + Math.sin(t * 2 + i * 2) * 0.25;
       p.beacon.scale.setScalar(s);
     }
+
+    // пульс маяка базы
+    if (G.baseBeacon) {
+      const s = 1 + Math.sin(t * 3) * 0.2;
+      G.baseBeacon.mesh.scale.setScalar(s);
+      G.baseBeacon.light.intensity = 250 + Math.sin(t * 3) * 80;
+    }
   }
 
   // прожектор
@@ -548,18 +868,66 @@ export function updateWorld(t, dt) {
     G.headlight.intensity = sim?.lightsOn && sim?.busPowered ? 900 : 0;
   }
 
-  // планктон: усиленный дрейф при движении
-  if (G.plankton) {
-    const spd = Math.abs(sim?.speed || 0);
-    G.plankton.rotation.y = t * 0.01 + spd * 0.02;
-    G.plankton.position.y = Math.sin(t * 0.3) * 1.2;
-    G.plankton.position.z = Math.sin(t * 0.5) * spd * 0.15;
-  }
-
   // иллюминатор мостика слегка «дрожит» на ходу
   if (G.bridgeGlass && sim) {
     const shake = Math.abs(sim.speed) * 0.002;
     G.bridgeGlass.position.x = Math.sin(t * 3.7) * shake;
+  }
+
+    // sonar: вращение линии-сканера + пульс колец + позиция меток POI + лут + пинг
+  if (G.sonar && sim) {
+    G.sonar.scanLine.rotation.z = -t * 2.5;
+    G.sonar.ring.material.opacity = 0.4 + Math.sin(t * 4) * 0.2;
+    // пинг сонара каждые 3 сек
+    if (!G.sonar._pingTimer) G.sonar._pingTimer = 0;
+    G.sonar._pingTimer += dt;
+    if (G.sonar._pingTimer > 3) {
+      G.sonar._pingTimer = 0;
+      G.sfx?.sonarPing();
+    }
+    // метки POI + лут на сонаре
+    if (G.sonar.dots) {
+      const sHeading = sim.heading * Math.PI / 180;
+      for (const d of G.sonar.dots) {
+        const dx = d.poi.x - sim.boatX;
+        const dz = d.poi.z - sim.boatZ;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        const angle = Math.atan2(dx, -dz) - sHeading;
+        const maxR = 0.33;
+        const displayR = Math.min(dist / 400, 1) * maxR;
+        d.dot.position.x = Math.sin(angle) * displayR;
+        d.dot.position.y = -Math.cos(angle) * displayR;
+        d.dot.material.opacity = dist < 300 ? 0.9 : 0.3 + Math.sin(t * 3) * 0.2;
+      }
+    }
+    // метки лута на сонаре (жёлтые)
+    if (G.lootCrates && G.sonar.grp) {
+      const sHeading = sim.heading * Math.PI / 180;
+      for (const crate of G.lootCrates) {
+        if (crate.looted || !crate.sonarDot) continue;
+        const dx = crate.pos.x - sim.boatX;
+        const dz = crate.pos.z - sim.boatZ;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        const angle = Math.atan2(dx, -dz) - sHeading;
+        const maxR = 0.33;
+        const displayR = Math.min(dist / 400, 1) * maxR;
+        crate.sonarDot.position.x = Math.sin(angle) * displayR;
+        crate.sonarDot.position.y = -Math.cos(angle) * displayR;
+        crate.sonarDot.material.opacity = dist < 50 ? 0.9 : 0.2;
+      }
+    }
+  }
+
+  // аварийное освещение: мигание при активации
+  if (G.emergencyLights && G.emergencyOn) {
+    const blink = Math.sin(t * 6) > 0 ? 1 : 0.15;
+    for (const el of G.emergencyLights) {
+      el.light.intensity = blink * 3;
+    }
+  } else if (G.emergencyLights) {
+    for (const el of G.emergencyLights) {
+      el.light.intensity = 0;
+    }
   }
 
   // вода в отсеках

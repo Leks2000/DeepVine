@@ -57,6 +57,79 @@ export class Sim {
 
     // цели
     this.goal = { reactor: false, dive: false, upgrades: 0, surface: false };
+
+    // миссии
+    this.missions = this._initMissions();
+    this.currentMission = 0;
+    this.missionLog = [];
+    this.credits = 0;
+  }
+
+  _initMissions() {
+    return [
+      {
+        id: 'start', name: 'ЗАПУСК СИСТЕМ',
+        desc: 'Запустите реактор и двигатель',
+        objectives: [
+          { text: 'Запустить реактор (1→2→3)', check: () => this.goal.reactor },
+          { text: 'Запустить двигатель', check: () => this.engineOn },
+        ],
+        reward: 0,
+        completed: false,
+      },
+      {
+        id: 'dive', name: 'ПОГРУЖЕНИЕ',
+        desc: 'Погрузитесь на глубину 100м',
+        objectives: [
+          { text: 'Погрузиться до 100 м', check: () => this.goal.dive },
+        ],
+        reward: 20,
+        completed: false,
+      },
+      {
+        id: 'upgrade', name: 'МОДЕРНИЗАЦИЯ',
+        desc: 'Установите 3 улучшения',
+        objectives: [
+          { text: 'Установить 3 модуля', check: () => this.goal.upgrades >= 3 },
+        ],
+        reward: 30,
+        completed: false,
+      },
+      {
+        id: 'return', name: 'ВОЗВРАТ',
+        desc: 'Всплывите на поверхность',
+        objectives: [
+          { text: 'Всплыть на поверхность', check: () => this.goal.surface },
+        ],
+        reward: 50,
+        completed: false,
+      },
+    ];
+  }
+
+  getMissionStatus() {
+    const m = this.missions[this.currentMission];
+    if (!m) return null;
+    const done = m.objectives.every(o => o.check());
+    return {
+      mission: m,
+      objectives: m.objectives.map(o => ({ text: o.text, done: o.check() })),
+      allDone: done,
+    };
+  }
+
+  completeMission() {
+    const m = this.missions[this.currentMission];
+    if (!m || m.completed) return;
+    m.completed = true;
+    this.credits += m.reward;
+    this.missionLog.push({ name: m.name, time: Date.now(), reward: m.reward });
+    if (this.currentMission < this.missions.length - 1) {
+      this.currentMission++;
+      G.hud?.log(`✅ Миссия "${m.name}" выполнена! +${m.reward} кредитов. Новая: "${this.missions[this.currentMission].name}"`, 'ok');
+    } else {
+      G.hud?.log(`🏆 Все миссии выполнены! Кредитов: ${this.credits}`, 'ok');
+    }
   }
 
   // ---------- РЕАКТОР ----------
@@ -90,6 +163,17 @@ export class Sim {
     if (this.power < 5) return 'no-charge';
     this.busPowered = true;
     return 'ok';
+  }
+
+  getPowerDraw() {
+    const d = { base: 0.15, bus: 0, engine: 0, pump: 0, lights: 0, total: 0 };
+    if (this.busPowered) d.bus = 0.4;
+    if (this.engineOn) d.engine = 1.2 + Math.abs(this.throttle) * 2.6 / this.mod.engineEff;
+    if (this.engineState === 'starting') d.engine = 3;
+    if (this.pumpOn) d.pump = 1.0;
+    if (this.lightsOn) d.lights = 0.5;
+    d.total = d.base + d.bus + d.engine + d.pump + d.lights;
+    return d;
   }
 
   startEngine() {
@@ -187,6 +271,7 @@ export class Sim {
     G.sfx?.setEngine(this.rpm, this.engineState);
     G.sfx?.setReactor(this.reactorOn ? this.reactorHeat / 120 : 0);
     G.sfx?.setWater(Math.min(1, this.totalWater() / 3));
+    G.sfx?.setVentilation(this.busPowered);
 
     // --- ход (только при работающем двигателе) ---
     if (!this.engineOn && this.engineState !== 'starting') {
@@ -195,7 +280,7 @@ export class Sim {
     const targetSpeed = this.engineOn ? this.throttle * 18 * Math.min(1, this.mod.engineEff) : 0;
     this.speed += (targetSpeed - this.speed) * Math.min(1, dt * 0.35);
     if (Math.abs(this.speed) < 0.02 && !this.engineOn) this.speed = 0;
-    this.heading = (this.heading + this.rudder * Math.abs(this.speed) * 0.28 * dt + 360) % 360;
+    this.heading = (this.heading + this.rudder * Math.abs(this.speed) * 0.38 * dt + 360) % 360;
 
     // --- реальное перемещение лодки ---
     const hr = this.heading * Math.PI / 180;
@@ -227,24 +312,37 @@ export class Sim {
 
     // --- НАГРУЗКА (stress): источники ---
     let s = 0;
-    if (this.engineOn) s += 6 + Math.abs(this.throttle) * 14;       // двигатель
+    if (this.engineOn) s += 6 + Math.abs(this.throttle) * 14;
     if (this.engineState === 'starting') s += 10;
-    s += Math.max(0, this.depth - 60) * 0.13;                       // глубина
-    s += Math.abs(this.speed) * 0.9;                                // скорость
-    if (this.reactorHeat > 75) s += (this.reactorHeat - 75) * 0.5;  // перегрев
-    s += floodW * 22;                                               // затопление
-    if (H) s += H.fires.length * 8 + H.shorts.length * 6;           // активные аварии
-    // целевой уровень
+    s += Math.max(0, this.depth - 60) * 0.13;
+    s += Math.abs(this.speed) * 0.9;
+    if (this.reactorHeat > 75) s += (this.reactorHeat - 75) * 0.5;
+    s += floodW * 22;
+    if (H) s += H.fires.length * 8 + H.shorts.length * 6;
     this.stress += (Math.min(100, s) - this.stress) * Math.min(1, dt * 0.12);
     this.stress = Math.max(0, Math.min(100, this.stress));
 
+    // --- предупреждение о балласте ---
+    if (this.ballast > 0.3 && this.depth < 10 && !this._ballastWarned) {
+      this._ballastWarned = true;
+      G.hud?.log('⚠ БАЛЛАСТ ОТКРЫТ — ПОГРУЖЕНИЕ!', 'warn');
+      G.sfx?.alarm();
+    }
+    if (this.ballast < 0.1) this._ballastWarned = false;
+
     // --- скрипы корпуса на глубине ---
-    if (this.depth > 80 && Math.random() < dt * (this.depth / 700)) G.sfx?.hullCreak(this.depth / 220);
+    G.sfx?.setDepthCreak(this.depth, dt);
 
     // --- цели ---
     if (this.depth >= 100) this.goal.dive = true;
     if (this.goal.dive && this.goal.reactor && this.goal.upgrades >= 3 && this.depth <= 0.5) {
       this.goal.surface = true;
+    }
+
+    // --- проверка завершения миссий ---
+    const status = this.getMissionStatus();
+    if (status && status.allDone && !status.mission.completed) {
+      this.completeMission();
     }
   }
 
