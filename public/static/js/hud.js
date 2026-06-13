@@ -34,29 +34,29 @@ export class Hud {
       return { cv, tex, mesh };
     };
 
-    // 1. ГЛАВНЫЙ МОНИТОР — на правой консоли, не блокирует окно
-    this._monitors.main = make(420, 260,
-      new THREE.Vector3(2.0, 1.55, -8.5), -Math.PI / 2 + 0.3, -0.15);
+    // 1. ГЛАВНЫЙ МОНИТОР — вынесен на правую стену, больше не врезается в штурвал/сонар
+    this._monitors.main = make(420, 300,
+      new THREE.Vector3(2.86, 1.66, -12.9), -Math.PI / 2, -0.04);
 
-    // 2. МОНИТОР СИСТЕМ — над штурвалом (высоко, не блокирует обзор)
-    this._monitors.systems = make(300, 200,
-      new THREE.Vector3(0, 2.1, -9.5), -0.4);
+    // 2. МОНИТОР СИСТЕМ — высокий центральный экран, не перекрывает переднее окно
+    this._monitors.systems = make(300, 260,
+      new THREE.Vector3(0, 2.14, -11.9), -0.08, -0.08);
 
-    // 3. МОНИТОР ЦЕЛЕЙ — на левой консоли
-    this._monitors.objectives = make(300, 220,
-      new THREE.Vector3(-2.0, 1.55, -8.5), Math.PI / 2 - 0.3, -0.15);
+    // 3. МОНИТОР ЦЕЛЕЙ — вынесен на левую стену, чтобы убрать кашу на боковой консоли
+    this._monitors.objectives = make(300, 200,
+      new THREE.Vector3(-2.86, 1.72, -12.9), Math.PI / 2, -0.04);
 
-    // 4. МОНИТОР ПРЕДУПРЕЖДЕНИЙ — маленький, над systems
-    this._monitors.alerts = make(300, 100,
-      new THREE.Vector3(0, 2.5, -9.8), -0.45);
+    // 4. МОНИТОР ПРЕДУПРЕЖДЕНИЙ — компактный над маршрутом/дверью, без конфликта с системным экраном
+    this._monitors.alerts = make(280, 92,
+      new THREE.Vector3(0, 2.62, -10.55), -0.12, -0.06);
 
-    // 5. ПОДСКАЗКА — на приборной панели перед штурвалом
-    this._monitors.hint = make(340, 50,
-      new THREE.Vector3(0, 1.05, -8.8), -0.2);
+    // 5. ПОДСКАЗКА — низкий дубль на приборной панели перед штурвалом
+    this._monitors.hint = make(320, 48,
+      new THREE.Vector3(0, 0.98, -8.85), -0.12, -0.02);
 
-    // 6. МОНИТОР КАМЕР — на правой стене мостика
-    this._monitors.camera = make(320, 240,
-      new THREE.Vector3(2.8, 1.6, -12), -Math.PI / 2);
+    // 6. МОНИТОР КАМЕР — отдельный правый бортовой экран
+    this._monitors.camera = make(300, 220,
+      new THREE.Vector3(2.86, 1.56, -10.55), -Math.PI / 2, -0.03);
 
     this._cameraLabel = 'НОС';
   }
@@ -183,20 +183,19 @@ export class Hud {
 
     // камера
     c.fillStyle = '#4488aa'; c.font = '12px monospace';
-    c.fillText(`КАМЕРА: ${this._cameraLabel || '—'}`, 14, 260);
+    c.fillText(`КАМЕРА: ${this._cameraLabel || '—'}`, 14, 254);
 
-    // кредиты
+    // кредиты / лут — внутри нового размера экрана, без выхода за canvas
     c.fillStyle = '#ffcc00'; c.font = 'bold 16px monospace';
-    c.fillText(`${sim.credits} ₮`, 350, 260);
+    c.fillText(`${sim.credits} ₮`, 300, 254);
     c.fillStyle = '#006644'; c.font = '10px monospace';
-    c.fillText('КРЕДИТЫ', 350, 275);
+    c.fillText('КРЕДИТЫ', 300, 268);
 
-    // лут
     if (G.lootCrates) {
       const remaining = G.lootCrates.filter(c => !c.looted).length;
       const total = G.lootCrates.length;
       c.fillStyle = '#ffaa00'; c.font = '10px monospace';
-      c.fillText(`ЛУТ: ${total - remaining}/${total}`, 350, 290);
+      c.fillText(`ЛУТ: ${total - remaining}/${total}`, 300, 286);
     }
 
     // тревога — вспышка

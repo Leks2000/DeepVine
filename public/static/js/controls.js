@@ -248,6 +248,28 @@ function box3(parent, w, h, d, mat, x, y, z) {
   m.position.set(x, y, z); parent.add(m); return m;
 }
 
+function makeLadderPad(x, y, z, { label, target, yaw = Math.PI, rotY = 0 }) {
+  const grp = new THREE.Group(); grp.position.set(x, y, z); grp.rotation.y = rotY;
+  const padMat = new THREE.MeshStandardMaterial({ color: 0x0d47a1, emissive: 0x00e5ff, emissiveIntensity: 0.45, transparent: true, opacity: 0.75 });
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.035, 0.58), padMat);
+  grp.add(pad);
+  const arrow = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.44), MAT.hazard);
+  arrow.position.z = -0.02; grp.add(arrow);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.22, 3), MAT.hazard);
+  nose.rotation.x = Math.PI / 2; nose.position.z = -0.34; grp.add(nose);
+  G.scene.add(grp);
+  registerInteractable({
+    mesh: grp,
+    hint: () => `${label} — [E] перейти без застревания`,
+    onPress() {
+      G.sfx.doorOpen();
+      G.player.teleport(target.x, target.z, yaw, target.y);
+      G.hud.log(`↕ ${label}`, 'ok');
+    },
+  });
+  return grp;
+}
+
 function makeIndicator(x, y, z, { label, rotY = 0 }) {
   const grp = new THREE.Group(); grp.position.set(x, y, z); grp.rotation.y = rotY;
   const panel = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.04), MAT.dark);
@@ -406,6 +428,33 @@ function makeTorpedoPanel(sim) {
 }
 
 // ---------- ШЛЮЗ: внутренняя дверь → камера → наружная дверь ----------
+function makeDeckRoutes() {
+  // Явные точки перехода между верхней/нижней палубой. Это чинит UX: игроку не нужно пытаться
+  // «поймать» лестницу клавишами W/S, а маршрут читается по подсветке на полу.
+  makeLadderPad(2.05, 0.08, -10.55, {
+    label: 'СПУСК В ТОРПЕДНЫЙ ОТСЕК',
+    target: { x: 1.55, y: 0.42, z: -12.3 },
+    yaw: Math.PI * 0.92,
+  });
+  makeLadderPad(1.55, -0.95, -12.25, {
+    label: 'ПОДЪЁМ НА МОСТИК',
+    target: { x: 1.55, y: 1.62, z: -9.25 },
+    yaw: Math.PI,
+  });
+  makeLadderPad(-2.05, 0.08, 15.0, {
+    label: 'СПУСК В МАШИННЫЙ НИЖНИЙ ОТСЕК',
+    target: { x: -1.55, y: 0.42, z: 16.55 },
+    yaw: 0,
+    rotY: Math.PI,
+  });
+  makeLadderPad(-1.55, -0.95, 16.55, {
+    label: 'ПОДЪЁМ ИЗ МАШИННОГО ОТСЕКА',
+    target: { x: -1.55, y: 1.62, z: 13.25 },
+    yaw: 0,
+    rotY: Math.PI,
+  });
+}
+
 function makeAirlock() {
   const al = G.airlock;
 
@@ -628,6 +677,7 @@ export function buildControls() {
 
   C.enginePanel = makeEnginePanel(sim);
   makeTorpedoPanel(sim);
+  makeDeckRoutes();
   makeAirlock();
 
   // кнопка переключения камер (на правой стене)

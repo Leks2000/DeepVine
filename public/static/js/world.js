@@ -46,6 +46,7 @@ function buildMaterials() {
   MAT.blackRubber = new THREE.MeshStandardMaterial({ color: 0x07090a, metalness: 0.15, roughness: 0.75 });
   MAT.ivory = new THREE.MeshStandardMaterial({ color: 0xc8bfa6, metalness: 0.25, roughness: 0.55 });
   MAT.copper = new THREE.MeshStandardMaterial({ color: 0x9b5a2e, metalness: 0.86, roughness: 0.34 });
+  MAT.routeGlow = new THREE.MeshStandardMaterial({ color: 0x80d8ff, emissive: 0x00e5ff, emissiveIntensity: 0.65, transparent: true, opacity: 0.78 });
 }
 
 
@@ -205,15 +206,18 @@ function buildHullInterior() {
     box(0.2, 1.0, tlen, MAT.hull, -w / 2 + 0.1, -0.55, tzc, null, true);
     box(0.2, 1.0, tlen, MAT.hull,  w / 2 - 0.1, -0.55, tzc, null, true);
     box(w, 0.12, 0.2, MAT.bulk, 0, -0.05, tz0 - 0.1, null, true);
-    // лестница с мостика
-    for (let i = 0; i < 5; i++) {
-      const step = box(0.7, 0.08, 0.35, MAT.brass, 2.1, 0.15 - i * 0.22, -10.2 - i * 0.35);
-      step.rotation.x = -0.35;
+    // лестница с мостика — теперь это читаемый маршрут с голубой подсветкой и без необходимости ловить пиксельную высоту
+    for (let i = 0; i < 7; i++) {
+      const step = box(0.86, 0.08, 0.36, MAT.brass, 2.05, 0.2 - i * 0.18, -10.15 - i * 0.34);
+      step.rotation.x = -0.32;
+      const stepGlow = box(0.78, 0.012, 0.06, MAT.routeGlow, 2.05, 0.255 - i * 0.18, -10.27 - i * 0.34);
+      stepGlow.rotation.x = -0.32;
     }
     // перила лестницы
-    cyl(0.02, 1.5, MAT.brass, 1.75, 0.0, -10.8, null, 0, 0.35);
-    cyl(0.02, 1.5, MAT.brass, 2.45, 0.0, -10.8, null, 0, 0.35);
-    const sTorp = makeSign('↓ TORPEDO', 1.3, 0.28);
+    cyl(0.025, 1.9, MAT.brass, 1.62, -0.05, -11.0, null, 0, 0.35);
+    cyl(0.025, 1.9, MAT.brass, 2.48, -0.05, -11.0, null, 0, 0.35);
+    box(1.3, 0.035, 2.4, MAT.routeGlow, 2.05, 0.03, -11.0);
+    const sTorp = makeSign('↓ НИЖНИЙ ОТСЕК · TORPEDO', 2.3, 0.28);
     sTorp.position.set(0, 2.6, -10.05); sTorp.rotation.y = Math.PI;
     G.scene.add(sTorp);
     const sTorp2 = makeSign('TORPEDO', 1.2, 0.26, '#0d1418', '#80d8ff');
@@ -227,15 +231,18 @@ function buildHullInterior() {
     box(w - 0.4, 0.15, elen, MAT.floor, 0, -1.05, ezc);
     box(0.2, 1.0, elen, MAT.hull, -w / 2 + 0.1, -0.55, ezc, null, true);
     box(0.2, 1.0, elen, MAT.hull,  w / 2 - 0.1, -0.55, ezc, null, true);
-    // люк/лестница с верхней палубы
-    for (let i = 0; i < 6; i++) {
-      const step = box(0.75, 0.08, 0.35, MAT.brass, -2.1, 0.15 - i * 0.2, ez0 + 0.3 + i * 0.35);
-      step.rotation.x = 0.35;
+    // люк/лестница с верхней палубы — подсвеченный безопасный маршрут вниз к двигателю
+    for (let i = 0; i < 7; i++) {
+      const step = box(0.86, 0.08, 0.36, MAT.brass, -2.05, 0.18 - i * 0.18, ez0 + 0.25 + i * 0.34);
+      step.rotation.x = 0.32;
+      const stepGlow = box(0.78, 0.012, 0.06, MAT.routeGlow, -2.05, 0.235 - i * 0.18, ez0 + 0.13 + i * 0.34);
+      stepGlow.rotation.x = 0.32;
     }
     // перила лестницы
-    cyl(0.02, 1.8, MAT.brass, -1.7, 0.0, ez0 + 1.2, null, 0, -0.35);
-    cyl(0.02, 1.8, MAT.brass, -2.5, 0.0, ez0 + 1.2, null, 0, -0.35);
-    const sEng = makeSign('↓ ENGINE ROOM', 1.4, 0.28);
+    cyl(0.025, 2.0, MAT.brass, -1.58, -0.05, ez0 + 1.2, null, 0, -0.35);
+    cyl(0.025, 2.0, MAT.brass, -2.52, -0.05, ez0 + 1.2, null, 0, -0.35);
+    box(1.35, 0.035, 2.5, MAT.routeGlow, -2.05, 0.03, ez0 + 1.25);
+    const sEng = makeSign('↓ НИЖНИЙ ОТСЕК · ENGINE', 2.25, 0.28);
     sEng.position.set(0, 2.6, ez0 + 0.1); sEng.rotation.y = Math.PI;
     G.scene.add(sEng);
     const sEng2 = makeSign('ENGINE ROOM', 1.3, 0.26, '#0d1418', '#80d8ff');
@@ -412,11 +419,11 @@ function buildProps() {
     box(1.5, 0.5, 0.65, MAT.bulk, sx * 2.0, 1.15, -8.65);
     const scr = box(0.95, 0.55, 0.06, MAT.screenOn, sx * 2.0, 1.42, -8.35);
     scr.rotation.x = -0.2;
-    // кнопки на консоли
-    for (let i = 0; i < 3; i++) {
-      const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 8),
-        new THREE.MeshStandardMaterial({ color: i === 0 ? 0x2e7d32 : i === 1 ? 0xc62828 : 0xf9a825 }));
-      btn.position.set(sx * 2.0, 0.92, -8.8 + i * 0.15);
+    // кнопки на консоли: утоплены ниже мониторов, чтобы не было визуального наложения
+    for (let i = 0; i < 5; i++) {
+      const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.018, 8),
+        new THREE.MeshStandardMaterial({ color: i % 3 === 0 ? 0x2e7d32 : i % 3 === 1 ? 0xc62828 : 0xf9a825 }));
+      btn.position.set(sx * (1.72 + i * 0.09), 0.92, -8.93);
       G.scene.add(btn);
     }
   }
@@ -464,9 +471,9 @@ function buildProps() {
     G.scene.add(sSonar);
   }
 
-  // центральный штурвальный пост — ниже и уже, чтобы не перекрывать окно и не пересекаться с мониторами
-  box(1.05, 0.72, 0.48, MAT.dark, 0, 0.36, -7.8, null, true);
-  box(1.0, 0.035, 0.46, MAT.yellow, 0, 0.75, -7.8);
+  // центральный штурвальный пост — ниже/уже; перед ним оставлен свободный коридор к нижнему торпедному люку
+  box(0.95, 0.64, 0.42, MAT.dark, 0, 0.32, -7.8, null, true);
+  box(0.92, 0.035, 0.4, MAT.yellow, 0, 0.68, -7.8);
   // дополнительные историчные приборы: манометры, телефоны, ряд тумблеров
   for (let i = 0; i < 5; i++) {
     const gx = -0.42 + i * 0.21;
@@ -483,7 +490,19 @@ function buildProps() {
     G.scene.add(toggle);
   }
 
-  // историчный повторитель курса + прокладочная карта на правом пульте (без пересечений с мониторами)
+  // перископный модуль + историчный повторитель курса + прокладочная карта (без пересечений с мониторами)
+  const periscope = new THREE.Group();
+  periscope.position.set(-0.72, 1.25, -6.35);
+  periscope.add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 2.3, 12), MAT.blackRubber));
+  const optic = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.11, 0.18), MAT.dark);
+  optic.position.set(0.28, 1.02, 0); periscope.add(optic);
+  const gripL = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.42, 8), MAT.brass);
+  gripL.rotation.z = Math.PI / 2; gripL.position.set(-0.25, -0.42, 0.06); periscope.add(gripL);
+  const gripR = gripL.clone(); gripR.position.x = 0.25; periscope.add(gripR);
+  G.scene.add(periscope);
+  const sPer = makeSign('PERISCOPE', 0.9, 0.2, '#0d1418', '#80d8ff');
+  sPer.position.set(-0.72, 2.45, -6.35); G.scene.add(sPer);
+
   const compass = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.08, 16), MAT.brass);
   compass.position.set(1.35, 0.95, -8.9); compass.rotation.x = Math.PI / 2; G.scene.add(compass);
   const compassGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.03, 16), MAT.glass);
@@ -636,7 +655,9 @@ function buildUnderwater() {
   const surf = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000, 1, 1),
     new THREE.MeshBasicMaterial({ color: 0x3d7ba6, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
   surf.rotation.x = -Math.PI / 2; surf.position.y = 0;
+  surf.visible = false;
   uw.add(surf);
+  G.underwaterSurface = surf;
 
   // === БАЗА «ГЛУБИНА» — подводная станция (стартовая точка) ===
   {
@@ -683,7 +704,7 @@ function buildUnderwater() {
     beacon.position.set(30, -SEABED_DEPTH + 22, 40);
     uw.add(beacon);
     const beaconLt = new THREE.PointLight(0x00e676, 300, 150, 1.6);
-    beacon.position.copy(beacon.position);
+    beaconLt.position.copy(beacon.position);
     uw.add(beaconLt);
     G.baseBeacon = { mesh: beacon, light: beaconLt };
   }
@@ -912,6 +933,8 @@ function buildExterior() {
 
   const deckY = DECK.eyeY - 1.62;
   buildHistoricOuterHull(g, deckY);
+  // Внутри лодки внешний корпус скрыт: иначе он визуально режет отсеки и перекрывает проходы.
+  g.visible = false;
   // палуба на корме
   const deck = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.18, 14), MAT.deck);
   deck.position.set(0, deckY, 24); g.add(deck);
@@ -1002,9 +1025,14 @@ export function updateWorld(t, dt) {
     if (Math.abs(G.plankton.position.z) > 20) G.plankton.position.z = 0;
   }
 
-  // внешнее освещение: только на поверхности
-  if (G.extSun) G.extSun.intensity = sim.depth <= 0.5 ? 1.2 : 0;
-  if (G.extAmb) G.extAmb.intensity = sim.depth <= 0.5 ? 0.6 : 0;
+  // Внешний корпус/палуба и поверхность моря видимы только снаружи.
+  // Это убирает главный визуальный баг со скриншотов: наружная сигара/вода больше не режут интерьер.
+  if (G.exterior) G.exterior.visible = !!G.flags.outside;
+  if (G.underwaterSurface) G.underwaterSurface.visible = !!G.flags.outside && sim.depth <= 0.5;
+
+  // внешнее освещение: только на поверхности и только снаружи
+  if (G.extSun) G.extSun.intensity = (G.flags.outside && sim.depth <= 0.5) ? 1.2 : 0;
+  if (G.extAmb) G.extAmb.intensity = (G.flags.outside && sim.depth <= 0.5) ? 0.6 : 0;
 
   // --- подводный мир: вращаем/смещаем вокруг лодки ---
   if (G.underwater && sim) {
