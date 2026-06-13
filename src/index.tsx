@@ -16,8 +16,11 @@ app.get('/', (c) => {
 
 <!-- ============ START SCREEN ============ -->
 <section id="start-screen">
-  <h1 class="title-big">ТИФОН-9</h1>
-  <p class="title-sub">ГЛУБОКОВОДНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ КОМПЛЕКС · 2086 · 3D</p>
+  <div class="start-shell">
+    <div class="start-badge">ОПЫТНЫЙ ДИЗЕЛЬ-ЭЛЕКТРИЧЕСКИЙ КОМПЛЕКС · FPS CAP 180</div>
+    <h1 class="title-big">ТИФОН-9</h1>
+    <p class="title-sub">ГЛУБОКОВОДНАЯ СУБМАРИНА · ИСТОРИЧНЫЙ КОРПУС · 3D</p>
+  </div>
   <div class="briefing">
     <b>ВЫ — единственный член экипажа субмарины «Тифон-9».</b><br><br>
     <b>БАЗА:</b> Подводная станция «Глубина» рядом (30м к востоку). Все системы на мониторах в рубке.<br><br>
@@ -33,7 +36,23 @@ app.get('/', (c) => {
     ⑤ Всплыть на поверхность<br><br>
     <span class="warn">⚠ Пожары тушите огнетушителем. Течи чините ключом. Следите за мониторами!</span>
   </div>
-  <button id="btn-start">⚓ ПРИНЯТЬ УПРАВЛЕНИЕ</button>
+  <div class="settings-panel" aria-label="Настройки запуска">
+    <div class="settings-title">НАСТРОЙКИ</div>
+    <label class="settings-row">
+      <span>Громкость</span>
+      <input id="settings-volume" type="range" min="0" max="100" value="80">
+      <b id="settings-volume-value">80%</b>
+    </label>
+    <label class="settings-check">
+      <input id="settings-mute" type="checkbox">
+      <span>Без звука</span>
+    </label>
+    <div class="settings-note">Рендер ограничен до 180 FPS; звук можно менять до и после запуска.</div>
+  </div>
+  <div class="start-actions">
+    <button id="btn-start">ПРИНЯТЬ УПРАВЛЕНИЕ</button>
+    <button id="btn-fullscreen" type="button">НА ВЕСЬ ЭКРАН</button>
+  </div>
 </section>
 
 <!-- ============ END SCREEN ============ -->

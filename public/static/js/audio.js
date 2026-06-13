@@ -8,13 +8,32 @@ export class Sfx {
     this.waterNode = null;
     this.ventNode = null;
     this.depthNode = null;
+    this.masterVolume = 0.8;
+    this.muted = false;
+  }
+
+  _applyMasterGain() {
+    if (!this.master) return;
+    const t = this.ctx?.currentTime ?? 0;
+    const value = this.muted ? 0 : this.masterVolume;
+    this.master.gain.setTargetAtTime(value, t, 0.03);
+  }
+
+  setMasterVolume(value) {
+    this.masterVolume = Math.max(0, Math.min(1, Number(value) || 0));
+    this._applyMasterGain();
+  }
+
+  setMuted(muted) {
+    this.muted = !!muted;
+    this._applyMasterGain();
   }
 
   init() {
     if (this.ctx) return;
     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 1;
+    this.master.gain.value = this.muted ? 0 : this.masterVolume;
     this.master.connect(this.ctx.destination);
 
     // вентиляция (фоновый гул)

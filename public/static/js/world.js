@@ -42,7 +42,12 @@ function buildMaterials() {
   MAT.monitorFrame = new THREE.MeshStandardMaterial({ color: 0x1a2228, metalness: 0.7, roughness: 0.5 });
   MAT.monitorScreen = new THREE.MeshStandardMaterial({ color: 0x06281e, emissive: 0x00e676, emissiveIntensity: 0.45 });
   MAT.emergencyLight = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff2200, emissiveIntensity: 0.9 });
+  MAT.rivet = new THREE.MeshStandardMaterial({ color: 0x8a969d, metalness: 0.9, roughness: 0.32 });
+  MAT.blackRubber = new THREE.MeshStandardMaterial({ color: 0x07090a, metalness: 0.15, roughness: 0.75 });
+  MAT.ivory = new THREE.MeshStandardMaterial({ color: 0xc8bfa6, metalness: 0.25, roughness: 0.55 });
+  MAT.copper = new THREE.MeshStandardMaterial({ color: 0x9b5a2e, metalness: 0.86, roughness: 0.34 });
 }
+
 
 function box(w, h, d, mat, x, y, z, parent, collide = false) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -58,6 +63,22 @@ function box(w, h, d, mat, x, y, z, parent, collide = false) {
 function cyl(r, h, mat, x, y, z, parent, rotZ = 0, rotX = 0) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 14), mat);
   m.position.set(x, y, z); m.rotation.z = rotZ; m.rotation.x = rotX;
+  (parent || G.scene).add(m);
+  return m;
+}
+
+function cone(r, h, mat, x, y, z, parent, rotX = 0) {
+  const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 24), mat);
+  m.position.set(x, y, z);
+  m.rotation.x = rotX;
+  (parent || G.scene).add(m);
+  return m;
+}
+
+function torus(r, tube, mat, x, y, z, parent, rotX = 0, rotY = 0, rotZ = 0) {
+  const m = new THREE.Mesh(new THREE.TorusGeometry(r, tube, 8, 32), mat);
+  m.position.set(x, y, z);
+  m.rotation.set(rotX, rotY, rotZ);
   (parent || G.scene).add(m);
   return m;
 }
@@ -443,9 +464,32 @@ function buildProps() {
     G.scene.add(sSonar);
   }
 
-  // центральный штурвалный пост (не блокирует окно)
-  box(1.2, 0.9, 0.55, MAT.dark, 0, 0.45, -7.8, null, true);
-  box(1.1, 0.03, 0.5, MAT.yellow, 0, 0.92, -7.8);
+  // центральный штурвальный пост — ниже и уже, чтобы не перекрывать окно и не пересекаться с мониторами
+  box(1.05, 0.72, 0.48, MAT.dark, 0, 0.36, -7.8, null, true);
+  box(1.0, 0.035, 0.46, MAT.yellow, 0, 0.75, -7.8);
+  // дополнительные историчные приборы: манометры, телефоны, ряд тумблеров
+  for (let i = 0; i < 5; i++) {
+    const gx = -0.42 + i * 0.21;
+    const gauge = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.018, 14), MAT.ivory);
+    gauge.rotation.x = Math.PI / 2; gauge.position.set(gx, 0.82, -8.05);
+    G.scene.add(gauge);
+    const needle = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.04, 0.006), MAT.red);
+    needle.position.set(gx, 0.82, -8.065); needle.rotation.z = -0.5 + i * 0.25;
+    G.scene.add(needle);
+  }
+  for (let i = 0; i < 9; i++) {
+    const toggle = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.12, 0.035), i % 3 === 0 ? MAT.red : MAT.brass);
+    toggle.rotation.x = -0.45; toggle.position.set(-0.48 + i * 0.12, 0.9, -7.56);
+    G.scene.add(toggle);
+  }
+
+  // потолочные кабельные лотки и трубы разнесены по высоте, чтобы визуально не пересекались
+  for (let i = 0; i < 4; i++) {
+    const z = -16 + i * 3.5;
+    cyl(0.035, 4.2, i % 2 ? MAT.copper : MAT.pipe2, -2.35 + i * 0.22, 2.86 - i * 0.08, z, null, 0, Math.PI / 2);
+    box(0.28, 0.04, 0.05, MAT.brass, -2.35 + i * 0.22, 2.72 - i * 0.08, z - 1.9);
+    box(0.28, 0.04, 0.05, MAT.brass, -2.35 + i * 0.22, 2.72 - i * 0.08, z + 1.9);
+  }
 
   // --- АВАРИЙНЫЕ ЛАМПЫ (красные, на потолке каждого отсека) ---
   G.emergencyLights = [];
@@ -752,6 +796,101 @@ function buildUnderwater() {
   G.uwDim = dim;
 }
 
+
+function buildHistoricOuterHull(g, deckY) {
+  // Внешний силуэт ближе к историческим дизель-электрическим лодкам: сигарообразный корпус,
+  // рубка-седло, клёпка, носовые/кормовые рули и два винта. Детали вынесены наружу,
+  // чтобы не пересекаться с интерьерными объектами и проходами.
+  const centerZ = (HULL.z0 + HULL.z1) / 2 + 2;
+  const outerY = 1.22;
+  const hullLen = 47;
+
+  const pressureHull = new THREE.Mesh(new THREE.CylinderGeometry(2.35, 2.35, hullLen, 32), MAT.hull);
+  pressureHull.rotation.x = Math.PI / 2;
+  pressureHull.position.set(0, outerY, centerZ);
+  g.add(pressureHull);
+
+  cone(2.35, 5.2, MAT.hull, 0, outerY, HULL.z0 - 3.1, g, -Math.PI / 2);
+  cone(2.0, 6.2, MAT.hull, 0, outerY, HULL.z1 + 6.0, g, Math.PI / 2);
+
+  // «Седловые» балластные цистерны по бортам, ниже окон мостика.
+  for (const sx of [-1, 1]) {
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 30, 18), MAT.dark);
+    tank.rotation.x = Math.PI / 2;
+    tank.position.set(sx * 2.55, 0.72, 2.0);
+    g.add(tank);
+    for (let z = -11; z <= 15; z += 5.2) {
+      torus(0.56, 0.018, MAT.rivet, sx * 2.55, 0.72, z, g, Math.PI / 2, 0, 0);
+    }
+  }
+
+  // Клёпка вдоль корпуса — мелкие точки не имеют коллизий.
+  const rivetGeo = new THREE.SphereGeometry(0.035, 6, 4);
+  for (const sx of [-1, 1]) {
+    for (let z = HULL.z0 - 1; z <= HULL.z1 + 4; z += 1.55) {
+      for (const y of [0.15, 2.28]) {
+        const r = new THREE.Mesh(rivetGeo, MAT.rivet);
+        r.position.set(sx * 2.42, y, z);
+        g.add(r);
+      }
+    }
+  }
+
+  // Верхняя рубка/боевая рубка с перископами и боковыми иллюминаторами.
+  const sailBase = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.42, 5.4), MAT.dark);
+  sailBase.position.set(0, deckY + 0.25, 21.7); g.add(sailBase);
+  const conning = new THREE.Mesh(new THREE.BoxGeometry(2.05, 2.55, 3.35), MAT.hull);
+  conning.position.set(0, deckY + 1.55, 21.4); g.add(conning);
+  const conningTop = new THREE.Mesh(new THREE.CylinderGeometry(1.02, 1.02, 2.1, 18), MAT.hull);
+  conningTop.rotation.x = Math.PI / 2; conningTop.position.set(0, deckY + 2.95, 21.4); g.add(conningTop);
+  for (const sx of [-1, 1]) {
+    for (const z of [20.35, 21.4, 22.45]) {
+      const win = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.035, 14), MAT.glass);
+      win.rotation.z = Math.PI / 2; win.position.set(sx * 1.06, deckY + 1.75, z); g.add(win);
+      torus(0.21, 0.018, MAT.brass, sx * 1.075, deckY + 1.75, z, g, 0, Math.PI / 2, 0);
+    }
+  }
+  cyl(0.055, 2.7, MAT.blackRubber, -0.34, deckY + 4.0, 21.05, g);
+  cyl(0.045, 2.25, MAT.blackRubber, 0.28, deckY + 3.75, 21.85, g);
+  box(0.55, 0.07, 0.18, MAT.blackRubber, -0.34, deckY + 5.35, 20.94, g);
+
+  // Носовой волнорез/антисетевой резак и якорные клюзы.
+  cyl(0.035, 5.0, MAT.brass, 0, outerY + 2.15, HULL.z0 - 4.9, g, Math.PI / 2, 0);
+  for (const sx of [-1, 1]) {
+    const hawse = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.035, 8, 18), MAT.blackRubber);
+    hawse.rotation.y = Math.PI / 2; hawse.position.set(sx * 1.25, 1.25, HULL.z0 - 2.2); g.add(hawse);
+  }
+
+  // Носовые и кормовые горизонтальные рули, киль и стабилизаторы.
+  for (const [z, span] of [[HULL.z0 - 1.7, 1.55], [HULL.z1 + 7.0, 1.75]]) {
+    for (const sx of [-1, 1]) {
+      const plane = new THREE.Mesh(new THREE.BoxGeometry(span, 0.08, 0.62), MAT.dark);
+      plane.position.set(sx * (2.2 + span / 2), 0.82, z);
+      plane.rotation.z = sx * 0.07;
+      g.add(plane);
+    }
+  }
+  box(0.12, 1.45, 4.2, MAT.dark, 0, -0.15, HULL.z1 + 4.7, g);
+  box(0.12, 1.45, 3.0, MAT.dark, 0, 2.85, HULL.z1 + 4.2, g);
+
+  // Два винта с защитными кольцами, расположены за корпусом, не пересекают палубу.
+  for (const sx of [-0.78, 0.78]) {
+    torus(0.38, 0.025, MAT.brass, sx, 0.82, HULL.z1 + 9.2, g, 0, 0, 0);
+    for (let i = 0; i < 3; i++) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.025, 0.42), MAT.brass);
+      blade.position.set(sx, 0.82, HULL.z1 + 9.2);
+      blade.rotation.z = i * Math.PI * 2 / 3;
+      blade.rotation.y = 0.35;
+      g.add(blade);
+    }
+    cyl(0.05, 1.45, MAT.dark, sx, 0.82, HULL.z1 + 8.45, g, 0, Math.PI / 2);
+  }
+
+  const s = makeSign('ТИФОН-9 · RESEARCH SUBMARINE', 2.4, 0.28, '#101820', '#c9a227');
+  s.position.set(0, 2.52, HULL.z0 + 2.6); s.rotation.y = Math.PI;
+  g.add(s);
+}
+
 // ---------- ПАЛУБА (единая карта, корма субмарины) ----------
 function buildExterior() {
   const g = new THREE.Group();
@@ -759,21 +898,14 @@ function buildExterior() {
   G.exterior = g;
 
   const deckY = DECK.eyeY - 1.62;
+  buildHistoricOuterHull(g, deckY);
   // палуба на корме
   const deck = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.18, 14), MAT.deck);
   deck.position.set(0, deckY, 24); g.add(deck);
-  // рубка на палубе
-  const sail = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.8, 4), MAT.hull);
-  sail.position.set(0, deckY + 1.5, 22); g.add(sail);
-  // окно рубки
-  const sailGlass = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 0.06), MAT.glass);
-  sailGlass.position.set(0, deckY + 2.2, 20.0); g.add(sailGlass);
-  // антенна на рубке
-  cyl(0.04, 1.5, MAT.dark, 0.6, deckY + 3.5, 22, g);
-  // перископ
-  cyl(0.07, 2.2, MAT.dark, 0, deckY + 2.8, 21.5, g);
-  // гакенкорос (крюк спереди рубки)
-  cyl(0.03, 0.6, MAT.brass, 0, deckY + 0.3, 19.8, g);
+  // невысокая обслуживаемая площадка на рубке — основной историчный силуэт строится отдельно
+  const lookout = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.36, 1.45), MAT.dark);
+  lookout.position.set(0, deckY + 3.25, 21.2); g.add(lookout);
+  cyl(0.03, 0.9, MAT.brass, 0, deckY + 3.78, 20.4, g);
 
   // палубные трубы
   cyl(0.04, 6, MAT.pipe2, -1.8, deckY + 0.15, 25, g, Math.PI / 2, 0);

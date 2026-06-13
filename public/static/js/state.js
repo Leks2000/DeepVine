@@ -3,6 +3,9 @@ export const G = {
   // three.js
   scene: null, camera: null, renderer: null, clock: null,
 
+  // пользовательские настройки
+  settings: { volume: 0.8, muted: false, fpsCap: 180 },
+
   // мир
   colliders: [],        // THREE.Box3 — статичные препятствия
   interactables: [],    // зарегистрированные интерактивные объекты

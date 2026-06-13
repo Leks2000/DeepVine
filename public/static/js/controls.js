@@ -150,14 +150,14 @@ function makeWheel(x, y, z, { onChange }) {
   wheel.add(hub);
   G.scene.add(grp);
 
-  const MAX_TURN = 2.8;
+  const MAX_TURN = 4.2; // увеличенный радиус/ход штурвала для более тяжёлого корабельного ощущения
   let turn = 0;
   registerInteractable({
     mesh: grp,
     hint: () => `ШТУРВАЛ (курс) — зажмите ЛКМ, ведите влево/вправо`,
     drag: {
       move(dx) {
-        turn = clamp(turn + dx * 0.012, -MAX_TURN, MAX_TURN);
+        turn = clamp(turn + dx * 0.010, -MAX_TURN, MAX_TURN);
         wheel.rotation.z = -turn;
         onChange(clamp(turn / MAX_TURN, -1, 1));
       },
