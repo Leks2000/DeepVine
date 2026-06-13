@@ -11,6 +11,54 @@ import { Upgrades } from './upgrades.js';
 import { Hud, showEnd } from './hud.js';
 import { Sfx } from './audio.js';
 
+const MAX_FPS = 180;
+const MIN_FRAME_MS = 1000 / MAX_FPS;
+
+
+function initSettingsUi() {
+  const savedVolume = localStorage.getItem('typhon9.volume');
+  const savedMuted = localStorage.getItem('typhon9.muted');
+  if (savedVolume !== null) G.settings.volume = Math.max(0, Math.min(1, Number(savedVolume)));
+  if (savedMuted !== null) G.settings.muted = savedMuted === 'true';
+
+  const volume = document.getElementById('settings-volume');
+  const volumeValue = document.getElementById('settings-volume-value');
+  const muted = document.getElementById('settings-mute');
+  const fullscreen = document.getElementById('btn-fullscreen');
+
+  const syncAudio = () => {
+    if (volumeValue) volumeValue.textContent = `${Math.round(G.settings.volume * 100)}%`;
+    G.sfx?.setMasterVolume(G.settings.volume);
+    G.sfx?.setMuted(G.settings.muted);
+  };
+
+  if (volume) {
+    volume.value = String(Math.round(G.settings.volume * 100));
+    volume.addEventListener('input', () => {
+      G.settings.volume = Number(volume.value) / 100;
+      localStorage.setItem('typhon9.volume', String(G.settings.volume));
+      syncAudio();
+    });
+  }
+  if (muted) {
+    muted.checked = G.settings.muted;
+    muted.addEventListener('change', () => {
+      G.settings.muted = muted.checked;
+      localStorage.setItem('typhon9.muted', String(G.settings.muted));
+      syncAudio();
+    });
+  }
+  fullscreen?.addEventListener('click', async () => {
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch (err) {
+      console.warn('Fullscreen request failed:', err);
+    }
+  });
+  syncAudio();
+}
+
 function init() {
   try {
   const canvas = document.getElementById('game-canvas');
@@ -28,6 +76,7 @@ function init() {
 
   G.sfx = new Sfx();
   G.sim = new Sim();
+  initSettingsUi();
 
   // внешние камеры
   G.extCameras = [
@@ -71,8 +120,11 @@ function init() {
 }
 
 let elapsed = 0;
-function loop() {
+let lastFrameMs = 0;
+function loop(now = 0) {
   requestAnimationFrame(loop);
+  if (now - lastFrameMs < MIN_FRAME_MS) return;
+  lastFrameMs = now;
   const dt = Math.min(0.05, G.clock.getDelta());
   elapsed += dt;
 
