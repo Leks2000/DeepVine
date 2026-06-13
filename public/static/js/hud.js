@@ -274,29 +274,6 @@ export class Hud {
     m.tex.needsUpdate = true;
   }
 
-    // предмет в руках
-    c.fillStyle = '#006644'; c.font = '12px monospace';
-    if (G.held) {
-      c.fillStyle = '#ffcc00';
-      c.fillText(`В РУКАХ: ${G.held.label}`, 10, 180);
-      if (G.held.charge) {
-        c.fillStyle = '#00aa88';
-        c.fillText(G.held.charge(), 10, 198);
-      }
-    } else {
-      c.fillText('В РУКАХ: —', 10, 180);
-    }
-
-    // протечки
-    const totalWater = sim.totalWater();
-    if (totalWater > 0.01) {
-      c.fillStyle = '#ff4444'; c.font = 'bold 14px monospace';
-      c.fillText(`ВОДА В ОТСЕКАХ: ${(totalWater * 100).toFixed(0)}%`, 10, 230);
-    }
-
-    m.tex.needsUpdate = true;
-  }
-
   _drawObjectives(sim) {
     const m = this._monitors.objectives;
     const c = m.cv.getContext('2d');

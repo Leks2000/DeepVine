@@ -28,7 +28,6 @@ function init() {
 
   G.sfx = new Sfx();
   G.sim = new Sim();
-  G.hud = new Hud();
 
   // внешние камеры
   G.extCameras = [
@@ -44,6 +43,7 @@ function init() {
 
   buildWorld();
 
+  G.hud = new Hud();
   G.player = new Player(G.camera, canvas);
   buildControls();
   G.hazards = new Hazards();
