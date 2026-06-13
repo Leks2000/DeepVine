@@ -171,6 +171,9 @@ export class Hud {
     c.fillStyle = '#00aa88'; c.font = '16px monospace';
     c.fillText(`RPM: ${(sim.rpm * 100).toFixed(0)}%`, 14, 200);
     c.fillText(`ГОРКА: ${sim.throttle > 0 ? '+' : ''}${(sim.throttle * 100).toFixed(0)}%`, 180, 200);
+    c.fillStyle = sim.engineFault ? '#ff5544' : '#80d8ff'; c.font = '12px monospace';
+    c.fillText(`ТОПЛ:${sim.fuelValve ? 'ОТКР' : 'ЗАКР'}  МАСЛО:${(sim.oilPressure * 100).toFixed(0)}%  ПОДОГР:${sim.preheatReady ? 'OK' : '—'}`, 14, 218);
+    if (sim.engineFault) c.fillText(`АВАРИЯ: ${sim.engineFault}`, 250, 218);
 
     // балласт
     c.fillStyle = '#00aa88'; c.font = '14px monospace';
@@ -246,6 +249,7 @@ export class Hud {
       { label: 'ДВИГ', val: draw.engine, max: 5 },
       { label: 'ПОМПА', val: draw.pump, max: 2 },
       { label: 'СВЕТ', val: draw.lights, max: 2 },
+      { label: 'ПОДОГР', val: draw.preheat, max: 1 },
       { label: 'ЗАРЯД ЭКП', val: draw.ekp, max: 2.2 },
     ];
     for (let i = 0; i < items.length; i++) {
@@ -332,6 +336,14 @@ export class Hud {
     if (sim.ekpMode) {
       c.fillStyle = '#80d8ff'; c.font = 'bold 11px monospace';
       c.fillText(`⚡ ЭКП ЗАРЯД: ${(sim.ekpRate * 100).toFixed(0)}%`, 8, 52);
+    }
+
+    if (sim.engineFault) {
+      c.fillStyle = '#ff4444'; c.font = 'bold 11px monospace';
+      c.fillText(`⛔ ДВИГАТЕЛЬ: ${sim.engineFault} · RESET`, 8, 70);
+    } else if (sim.busPowered && sim.engineState === 'off' && !sim.engineReady) {
+      c.fillStyle = '#ffaa00'; c.font = 'bold 10px monospace';
+      c.fillText('ПУСК: ТОПЛИВО → МАСЛО → ПОДОГРЕВ → START', 8, 70);
     }
 
     // последние 3 записи лога

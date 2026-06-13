@@ -292,23 +292,27 @@ function makeEnginePanel(sim) {
   const cy = 0.35;
   const face = Math.PI;
 
-  const breakerLed = makeIndicator(cx + 0.55, cy + 0.55, cz, { rotY: face });
-  const busLed = makeIndicator(cx + 0.55, cy + 0.2, cz, { rotY: face });
-  const engineLed = makeIndicator(cx + 0.55, cy - 0.15, cz, { rotY: face });
-  const ekpLed = makeIndicator(cx + 0.55, cy - 0.85, cz, { rotY: face });
+  const breakerLed = makeIndicator(cx + 0.72, cy + 0.72, cz, { rotY: face });
+  const busLed = makeIndicator(cx + 0.72, cy + 0.42, cz, { rotY: face });
+  const fuelLed = makeIndicator(cx + 0.72, cy + 0.12, cz, { rotY: face });
+  const oilLed = makeIndicator(cx + 0.72, cy - 0.18, cz, { rotY: face });
+  const preheatLed = makeIndicator(cx + 0.72, cy - 0.48, cz, { rotY: face });
+  const engineLed = makeIndicator(cx + 0.72, cy - 0.78, cz, { rotY: face });
+  const faultLed = makeIndicator(cx + 0.72, cy - 1.08, cz, { rotY: face });
+  const ekpLed = makeIndicator(cx + 0.72, cy - 1.38, cz, { rotY: face });
 
-  makeToggle(cx - 0.15, cy + 0.55, cz, {
+  makeToggle(cx - 0.35, cy + 0.72, cz, {
     label: '① ГЛАВНЫЙ РУБИЛЬНИК', rotY: face,
     onChange(on) {
       sim.setBreaker(on);
       if (on) { G.sfx.breakerOn(); G.hud.log('⚡ Рубильник ВКЛ. Теперь: ПОДАЧА ПИТАНИЯ.', 'ok'); }
       else { G.sfx.breakerOff(); G.hud.log('⚡ Рубильник ВЫКЛ.', ''); }
       breakerLed.setState(on ? 'on' : 'off');
-      if (!on) { busLed.setState('off'); engineLed.setState('off'); }
+      if (!on) { busLed.setState('off'); fuelLed.setState('off'); oilLed.setState('off'); preheatLed.setState('off'); engineLed.setState('off'); }
     },
   });
 
-  makeButton(cx - 0.15, cy + 0.2, cz, {
+  makeButton(cx - 0.35, cy + 0.42, cz, {
     label: '② ПОДАЧА ПИТАНИЯ НА ШИНУ', rotY: face,
     color: new THREE.MeshStandardMaterial({ color: 0x1565c0 }),
     canUse: () => sim.breaker,
@@ -323,27 +327,75 @@ function makeEnginePanel(sim) {
     },
   });
 
-  makeButton(cx - 0.15, cy - 0.15, cz, {
-    label: '③ ПУСК ДВИГАТЕЛЯ', rotY: face,
+  makeToggle(cx - 0.35, cy + 0.12, cz, {
+    label: '③ ТОПЛИВНЫЙ КРАН', rotY: face,
+    onChange(on) {
+      sim.setFuelValve(on);
+      fuelLed.setState(on ? 'on' : 'off');
+      G.hud.log(on ? '⛽ Топливная магистраль открыта. Далее: маслопомпа.' : '⛽ Топливный кран закрыт.', on ? 'ok' : 'warn');
+    },
+  });
+
+  makeLever(cx - 0.38, cy - 0.2, cz + 0.03, {
+    min: 0, max: 1, init: 0, rotY: face,
+    label: '④ РУЧНАЯ МАСЛОПОМПА', color: MAT.brass,
+    canUse: () => sim.busPowered && sim.fuelValve,
+    onChange(v) {
+      sim.setOilPrimeLevel(v);
+      if (sim.oilPressure >= 0.55) oilLed.setState('on');
+      else if (sim.oilPressure > 0.2) oilLed.setState('warn');
+    },
+  });
+
+  makeButton(cx - 0.35, cy - 0.48, cz, {
+    label: '⑤ ПРЕДПУСКОВОЙ ПОДОГРЕВ', rotY: face,
+    color: MAT.yellow,
+    canUse: () => sim.busPowered && sim.fuelValve && sim.oilPressure >= 0.55,
+    onPress() {
+      const r = sim.preheatEngine();
+      if (r === 'ok') {
+        G.sfx.buttonOk();
+        preheatLed.setState('on');
+        G.hud.log('♨ Подогрев готов. Теперь: ПУСК ДВИГАТЕЛЯ.', 'ok');
+      } else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину (②)!');
+      else if (r === 'no-fuel') G.hud.hintFlash('Откройте топливный кран (③)!');
+      else if (r === 'no-oil') G.hud.hintFlash('Поднимите давление масла маслопомпой (④)!');
+      else G.hud.hintFlash('Недостаточно заряда для подогрева.');
+    },
+  });
+
+  makeButton(cx - 0.35, cy - 0.78, cz, {
+    label: '⑥ ПУСК ДВИГАТЕЛЯ', rotY: face,
     color: MAT.green,
-    canUse: () => sim.busPowered && sim.engineState === 'off',
+    canUse: () => sim.engineReady && sim.engineState === 'off',
     onPress() {
       const r = sim.startEngine();
       if (r === 'ok') {
         G.sfx.engineCrank();
         engineLed.setState('warn');
-        G.hud.log('🔧 Запуск двигателя… (~3 сек)', '');
+        G.hud.log('🔧 Стартер крутит: масло/топливо/подогрев в норме… (~3 сек)', '');
       } else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину (②)!');
+      else if (r === 'no-fuel') G.hud.hintFlash('Откройте топливный кран (③)!');
+      else if (r === 'no-oil') G.hud.hintFlash('Поднимите давление масла (④)!');
+      else if (r === 'no-preheat') G.hud.hintFlash('Включите предпусковой подогрев (⑤)!');
+      else if (r === 'fault') G.hud.hintFlash('Есть аварийная блокировка — сбросьте АВАРИЯ RESET.');
       else if (r === 'no-charge') G.hud.hintFlash('Недостаточно заряда!');
       else G.hud.hintFlash('Двигатель уже работает.');
     },
   });
 
-  makeButton(cx - 0.15, cy - 0.5, cz, {
-    label: '④ ОСТАНОВ ДВИГАТЕЛЯ', rotY: face,
+  makeButton(cx - 0.35, cy - 1.08, cz, {
+    label: '⑦ ОСТАНОВ / АВАРИЯ RESET', rotY: face,
     color: MAT.red,
-    canUse: () => sim.engineState === 'on' || sim.engineState === 'starting',
+    canUse: () => sim.engineState === 'on' || sim.engineState === 'starting' || !!sim.engineFault,
     onPress() {
+      if (sim.engineFault) {
+        sim.resetEngineFault();
+        faultLed.setState('off');
+        G.sfx.buttonOk();
+        G.hud.log('✅ Аварийная блокировка двигателя сброшена. Повторите цикл запуска.', 'ok');
+        return;
+      }
       const r = sim.stopEngine();
       if (r === 'ok') {
         G.sfx.engineDieOff();
@@ -355,8 +407,8 @@ function makeEnginePanel(sim) {
     },
   });
 
-  makeToggle(cx - 0.15, cy - 0.85, cz, {
-    label: '⑤ РЕЖИМ ЗАРЯДКИ ЭКП', rotY: face,
+  makeToggle(cx - 0.35, cy - 1.38, cz, {
+    label: '⑧ РЕЖИМ ЗАРЯДКИ ЭКП', rotY: face,
     onChange(on) {
       sim.setEkpMode(on);
       if (!on) sim.setEkpRate(0);
@@ -368,9 +420,9 @@ function makeEnginePanel(sim) {
     },
   });
 
-  makeLever(cx - 0.55, cy - 1.22, cz + 0.03, {
+  makeLever(cx + 0.16, cy - 1.38, cz + 0.03, {
     min: 0, max: 1, init: 0, rotY: face,
-    label: '⑥ ТОК ЗАРЯДКИ ЭКП', color: MAT.yellow,
+    label: '⑨ ТОК ЗАРЯДКИ ЭКП', color: MAT.yellow,
     canUse: () => sim.ekpMode && sim.reactorOn && sim.busPowered,
     onChange(v) {
       sim.setEkpRate(v);
@@ -378,9 +430,13 @@ function makeEnginePanel(sim) {
     },
   });
 
-  return { breakerLed, busLed, engineLed, ekpLed, update() {
+  return { breakerLed, busLed, fuelLed, oilLed, preheatLed, engineLed, faultLed, ekpLed, update() {
     breakerLed.setState(sim.breaker ? 'on' : 'off');
     busLed.setState(sim.busPowered ? 'on' : 'off');
+    fuelLed.setState(sim.fuelValve ? 'on' : 'off');
+    oilLed.setState(sim.oilPressure >= 0.55 ? 'on' : sim.oilPressure > 0.2 ? 'warn' : 'off');
+    preheatLed.setState(sim.preheatReady ? 'on' : 'off');
+    faultLed.setState(sim.engineFault ? 'err' : 'off');
     if (sim.engineState === 'on') engineLed.setState('on');
     else if (sim.engineState === 'starting') engineLed.setState('warn');
     else engineLed.setState('off');
@@ -603,13 +659,17 @@ export function buildControls() {
 
   makeButton(-2.45, 1.0, -9.1, {
     label: 'ПУСК ДВИГАТЕЛЯ (мостик)', rotY: Math.PI / 2, color: MAT.green,
-    canUse: () => sim.busPowered && sim.engineState === 'off',
+    canUse: () => sim.engineReady && sim.engineState === 'off',
     onPress() {
       const r = sim.startEngine();
       if (r === 'ok') {
         G.sfx.engineCrank();
         G.hud.log('🔧 Дублирующий пуск: двигатель запускается.', 'ok');
       } else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину в машинном отсеке.');
+      else if (r === 'no-fuel') G.hud.hintFlash('В машинном отсеке откройте топливный кран.');
+      else if (r === 'no-oil') G.hud.hintFlash('В машинном отсеке поднимите давление масла.');
+      else if (r === 'no-preheat') G.hud.hintFlash('Выполните предпусковой подогрев в машинном отсеке.');
+      else if (r === 'fault') G.hud.hintFlash('Сначала сбросьте аварийную блокировку двигателя.');
       else if (r === 'no-charge') G.hud.hintFlash('Недостаточно энергии АКБ/ЭКП для запуска.');
     },
   });

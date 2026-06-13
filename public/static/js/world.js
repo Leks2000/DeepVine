@@ -222,6 +222,9 @@ function buildHullInterior() {
     G.scene.add(sTorp);
     const sTorp2 = makeSign('TORPEDO', 1.2, 0.26, '#0d1418', '#80d8ff');
     sTorp2.position.set(0, -0.35, tzc); G.scene.add(sTorp2);
+    const sTorpFloor = makeSign('E: СПУСК · TORPEDO', 1.65, 0.24, '#061519', '#80d8ff');
+    sTorpFloor.position.set(2.05, 0.18, -9.55); sTorpFloor.rotation.x = -0.65; sTorpFloor.rotation.y = Math.PI;
+    G.scene.add(sTorpFloor);
     G.lowerDeckZ = { z0: tz0, z1: tz1 };
   }
 
@@ -252,6 +255,10 @@ function buildHullInterior() {
     const grate = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 1.6),
       new THREE.MeshStandardMaterial({ color: 0x455a64, metalness: 0.8, roughness: 0.5 }));
     grate.position.set(-2.0, 0.02, ez0 + 1.2); G.scene.add(grate);
+
+    const sEngFloor = makeSign('E: СПУСК · ENGINE', 1.55, 0.24, '#061519', '#80d8ff');
+    sEngFloor.position.set(-2.05, 0.18, ez0 + 2.35); sEngFloor.rotation.x = -0.65;
+    G.scene.add(sEngFloor);
   }
 
   // --- КОРМОВОЙ ТОРЕЦ с проёмом в шлюз ---
@@ -473,6 +480,15 @@ function buildProps() {
 
   // центральный штурвальный пост — ниже/уже; перед ним оставлен свободный коридор к нижнему торпедному люку
   box(0.95, 0.64, 0.42, MAT.dark, 0, 0.32, -7.8, null, true);
+  // голубой маршрут к нижней палубе: точки на полу читаются даже без HUD
+  for (const [x, z, sx] of [[0.8, -8.85, 0.55], [1.35, -9.55, 0.7], [1.78, -10.25, 0.85]]) {
+    const route = box(sx, 0.012, 0.08, MAT.routeGlow, x, 0.025, z);
+    route.rotation.y = -0.55;
+  }
+  for (const [x, z] of [[1.28, -9.75], [2.45, -10.75], [-2.45, 15.05], [-1.28, 15.95]]) {
+    const lamp = new THREE.PointLight(0x00e5ff, 1.8, 2.4, 2.0);
+    lamp.position.set(x, 0.55, z); G.scene.add(lamp);
+  }
   box(0.92, 0.035, 0.4, MAT.yellow, 0, 0.68, -7.8);
   // дополнительные историчные приборы: манометры, телефоны, ряд тумблеров
   for (let i = 0; i < 5; i++) {
@@ -521,6 +537,44 @@ function buildProps() {
     cyl(0.035, 4.2, i % 2 ? MAT.copper : MAT.pipe2, -2.35 + i * 0.22, 2.86 - i * 0.08, z, null, 0, Math.PI / 2);
     box(0.28, 0.04, 0.05, MAT.brass, -2.35 + i * 0.22, 2.72 - i * 0.08, z - 1.9);
     box(0.28, 0.04, 0.05, MAT.brass, -2.35 + i * 0.22, 2.72 - i * 0.08, z + 1.9);
+  }
+
+  // дополнительный историчный слой мостика: распределительные панели, кабельные дуги, вентили и клёпка
+  for (const sx of [-1, 1]) {
+    const wallX = sx * 2.82;
+    for (let i = 0; i < 4; i++) {
+      const z = -16.4 + i * 1.55;
+      const panel = box(0.08, 0.46, 0.62, i % 2 ? MAT.dark : MAT.monitorFrame, wallX, 1.02 + (i % 2) * 0.32, z);
+      panel.rotation.y = sx * 0.02;
+      for (let k = 0; k < 3; k++) {
+        const led = new THREE.Mesh(new THREE.SphereGeometry(0.025, 7, 5), k === 0 ? MAT.red : k === 1 ? MAT.yellow : MAT.green);
+        led.position.set(wallX - sx * 0.055, 1.0 + (i % 2) * 0.32 + k * 0.11, z - 0.19);
+        G.scene.add(led);
+      }
+    }
+    for (let z = -17.2; z <= -3.0; z += 2.1) {
+      const valve = torus(0.16, 0.025, MAT.red, sx * 2.74, 2.08, z, null, 0, Math.PI / 2, 0);
+      valve.rotation.z = z;
+      cyl(0.018, 0.34, MAT.brass, sx * 2.74, 2.08, z, null, Math.PI / 2, 0);
+    }
+    for (let i = 0; i < 5; i++) {
+      const z = -16.8 + i * 3.0;
+      cyl(0.025, 2.7, MAT.blackRubber, sx * (2.15 - i * 0.08), 2.62, z, null, 0, Math.PI / 2);
+      cyl(0.018, 1.2, MAT.copper, sx * (2.42 - i * 0.05), 2.42, z + 0.75, null, 0, Math.PI / 2);
+    }
+  }
+  for (let z = -17.3; z < -2.6; z += 0.8) {
+    for (const sx of [-1, 1]) {
+      const r = new THREE.Mesh(new THREE.SphereGeometry(0.026, 6, 4), MAT.rivet);
+      r.position.set(sx * 2.88, 2.52, z); G.scene.add(r);
+    }
+  }
+  const periscopeBase = box(0.64, 0.16, 0.64, MAT.brass, -0.72, 0.56, -6.35);
+  periscopeBase.rotation.y = 0.35;
+  for (let i = 0; i < 3; i++) {
+    const opticGauge = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.015, 12), MAT.ivory);
+    opticGauge.rotation.x = Math.PI / 2; opticGauge.position.set(-0.92 + i * 0.2, 0.7, -6.67);
+    G.scene.add(opticGauge);
   }
 
   // --- АВАРИЙНЫЕ ЛАМПЫ (красные, на потолке каждого отсека) ---
@@ -608,9 +662,9 @@ function buildProps() {
   }
   G.engineBlocks = true;
   // пульт двигателя — крупная панель в центре нижнего машинного (controls.js)
-  const panelBg = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.5, 0.12), MAT.dark);
-  panelBg.position.set(0, ely + 0.85, 16.2); G.scene.add(panelBg);
-  const sEl = makeSign('⚡ ЭЛЕКТРОЩИТ / ДВИГАТЕЛЬ', 1.6, 0.3);
+  const panelBg = new THREE.Mesh(new THREE.BoxGeometry(2.25, 2.15, 0.12), MAT.dark);
+  panelBg.position.set(0, ely + 0.42, 16.2); G.scene.add(panelBg);
+  const sEl = makeSign('⚡ ЭЛЕКТРОЩИТ / ДВИГАТЕЛЬ', 1.85, 0.3);
   sEl.position.set(0, ely + 1.55, 16.14); G.scene.add(sEl);
   // манометры на стене
   for (let i = 0; i < 3; i++) {

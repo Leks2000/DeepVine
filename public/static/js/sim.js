@@ -12,9 +12,13 @@ export class Sim {
     this.reactorHeat = 20;      // °C условные
     this.cooling = 0;           // 0..1 вентиль охлаждения
 
-    // --- электрика ---
+    // --- электрика / последовательность запуска двигателя ---
     this.breaker = false;       // главный рубильник
     this.busPowered = false;    // подача питания на шину
+    this.fuelValve = false;     // топливный кран открыт
+    this.oilPressure = 0;       // 0..1 ручная маслопомпа / давление масла
+    this.preheatReady = false;  // предпусковой подогрев завершён
+    this.engineFault = null;    // код аварийной блокировки
     // двигатель: off | starting | on | stopping
     this.engineState = 'off';
     this.engineTimer = 0;
@@ -156,6 +160,7 @@ export class Sim {
     this.breaker = on;
     if (!on) {
       this.busPowered = false;
+      this.preheatReady = false;
       if (this.engineState === 'on' || this.engineState === 'starting') this.stopEngine();
     }
   }
@@ -173,14 +178,15 @@ export class Sim {
   }
 
   getPowerDraw() {
-    const d = { base: 0.15, bus: 0, engine: 0, pump: 0, lights: 0, ekp: 0, total: 0 };
+    const d = { base: 0.15, bus: 0, engine: 0, pump: 0, lights: 0, preheat: 0, ekp: 0, total: 0 };
     if (this.busPowered) d.bus = 0.4;
     if (this.engineOn) d.engine = 1.2 + Math.abs(this.throttle) * 2.6 / this.mod.engineEff;
     if (this.engineState === 'starting') d.engine = 3;
+    if (this.busPowered && this.preheatReady && this.engineState === 'off') d.preheat = 0.18;
     if (this.pumpOn) d.pump = 1.0;
     if (this.lightsOn) d.lights = 0.5;
     if (this.ekpMode && this.reactorOn && this.busPowered && this.ekpCharge < 100) d.ekp = 0.4 + this.ekpRate * 1.3;
-    d.total = d.base + d.bus + d.engine + d.pump + d.lights + d.ekp;
+    d.total = d.base + d.bus + d.engine + d.pump + d.lights + d.preheat + d.ekp;
     return d;
   }
 
@@ -193,10 +199,48 @@ export class Sim {
     this.ekpRate = Math.max(0, Math.min(1, v));
   }
 
-  startEngine() {
+  setFuelValve(on) {
+    this.fuelValve = !!on;
+    if (!this.fuelValve && (this.engineState === 'on' || this.engineState === 'starting')) {
+      this.engineFault = 'FUEL_CUT';
+      this.stopEngine();
+      G.hud?.log('⛔ АВАРИЙНЫЙ СТОП: топливный кран закрыт.', 'bad');
+      G.sfx?.alarm();
+    }
+  }
+
+  setOilPrimeLevel(v) {
+    this.oilPressure = Math.max(this.oilPressure, Math.max(0, Math.min(1, v)));
+  }
+
+  preheatEngine() {
     if (!this.busPowered) return 'no-bus';
+    if (!this.fuelValve) return 'no-fuel';
+    if (this.oilPressure < 0.55) return 'no-oil';
+    if (this.power < 4) return 'no-charge';
+    this.power = Math.max(0, this.power - 4);
+    this.preheatReady = true;
+    this.engineFault = null;
+    return 'ok';
+  }
+
+  resetEngineFault() {
+    this.engineFault = null;
+    if (!this.busPowered) this.preheatReady = false;
+  }
+
+  get engineReady() {
+    return this.busPowered && this.fuelValve && this.oilPressure >= 0.55 && this.preheatReady && !this.engineFault;
+  }
+
+  startEngine() {
+    if (this.engineFault) return 'fault';
+    if (!this.busPowered) return 'no-bus';
+    if (!this.fuelValve) return 'no-fuel';
+    if (this.oilPressure < 0.55) return 'no-oil';
+    if (!this.preheatReady) return 'no-preheat';
     if (this.engineState === 'on' || this.engineState === 'starting') return 'already';
-    if (this.power < 8) {
+    if (this.power < 10) {
       if (this.ekpCharge >= 18) {
         this.ekpCharge = Math.max(0, this.ekpCharge - 18);
         this.power = Math.min(22, this.power + 12);
@@ -260,9 +304,20 @@ export class Sim {
     if (this.busPowered) drain += 0.4;
     if (this.engineOn) drain += 1.2 + Math.abs(this.throttle) * 2.6 / this.mod.engineEff;
     if (this.engineState === 'starting') drain += 3;
+    if (this.busPowered && this.preheatReady && this.engineState === 'off') drain += 0.18;
     if (this.pumpOn) drain += 1.0;
     if (this.lightsOn) drain += 0.5;
     this.power = Math.max(0, this.power - drain * dt);
+
+    // масло не держится вечно: после запуска поддерживается насосом, до запуска давление медленно падает
+    if (this.engineOn) this.oilPressure = Math.min(1, this.oilPressure + 0.08 * dt);
+    else this.oilPressure = Math.max(0, this.oilPressure - (this.engineState === 'starting' ? 0.01 : 0.018) * dt);
+    if (this.oilPressure < 0.35 && this.engineOn && Math.abs(this.throttle) > 0.55) {
+      this.engineFault = 'LOW_OIL';
+      this.stopEngine();
+      G.hud?.log('⛔ АВАРИЙНЫЙ СТОП: низкое давление масла на высоком ходу.', 'bad');
+      G.sfx?.alarm();
+    }
 
     // ручная зарядка ЭКП: только при работающем реакторе и поданной шине
     if (this.ekpMode && this.reactorOn && this.busPowered && this.ekpCharge < 100) {
@@ -294,9 +349,19 @@ export class Sim {
     if (this.engineState === 'starting') {
       this.engineTimer += dt;
       this.rpm = Math.min(0.35, this.engineTimer / 3 * 0.35);
-      if (this.engineTimer >= 3) {
+      if (!this.busPowered || !this.fuelValve || this.power < 1 || this.oilPressure < 0.25) {
+        this.engineFault = !this.fuelValve ? 'FUEL_CUT' : this.oilPressure < 0.25 ? 'LOW_OIL' : 'POWER_LOSS';
+        this.engineState = 'off';
+        this.engineTimer = 0;
+        this.rpm = 0;
+        this.preheatReady = false;
+        G.hud?.log('⛔ Запуск сорван: питание/топливо/масло вне нормы. Сбросьте аварию и повторите цикл.', 'bad');
+        G.sfx?.engineDieOff();
+        G.sfx?.alarm();
+      } else if (this.engineTimer >= 3) {
         this.engineState = 'on';
-        G.hud?.log('🟢 ДВИГАТЕЛЬ ЗАПУЩЕН. Машинный телеграф к вашим услугам.', 'ok');
+        this.preheatReady = false;
+        G.hud?.log('🟢 ДВИГАТЕЛЬ ONLINE. Последовательность запуска выполнена.', 'ok');
         G.sfx?.engineOnline();
       }
     } else if (this.engineState === 'on') {
@@ -364,6 +429,8 @@ export class Sim {
     let s = 0;
     if (this.engineOn) s += 6 + Math.abs(this.throttle) * 14;
     if (this.engineState === 'starting') s += 10;
+    if (this.engineFault) s += 18;
+    if (this.engineOn && this.oilPressure < 0.45) s += 18;
     s += Math.max(0, this.depth - 60) * 0.13;
     s += Math.abs(this.speed) * 0.9;
     if (this.reactorHeat > 75) s += (this.reactorHeat - 75) * 0.5;
