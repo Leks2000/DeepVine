@@ -36,6 +36,9 @@ export class Sim {
     // --- ресурсы ---
     this.o2 = 100;
     this.power = 60;            // заряд аккумуляторов
+    this.ekpCharge = 28;        // ЭКП/буферный электрический пакет (ручная зарядка с панели)
+    this.ekpMode = false;       // режим ручной зарядки ЭКП
+    this.ekpRate = 0;           // ток зарядки ЭКП 0..1
     this.hull = 100;
 
     // --- вода в отсеках (м, 0..1.2) ---
@@ -160,26 +163,47 @@ export class Sim {
   powerBus() {
     if (!this.breaker) return 'no-breaker';
     if (this.busPowered) return 'already';
-    if (this.power < 5) return 'no-charge';
+    if (this.power < 5 && this.ekpCharge < 12) return 'no-charge';
+    if (this.power < 5 && this.ekpCharge >= 12) {
+      this.ekpCharge = Math.max(0, this.ekpCharge - 12);
+      this.power = Math.min(20, this.power + 12);
+    }
     this.busPowered = true;
     return 'ok';
   }
 
   getPowerDraw() {
-    const d = { base: 0.15, bus: 0, engine: 0, pump: 0, lights: 0, total: 0 };
+    const d = { base: 0.15, bus: 0, engine: 0, pump: 0, lights: 0, ekp: 0, total: 0 };
     if (this.busPowered) d.bus = 0.4;
     if (this.engineOn) d.engine = 1.2 + Math.abs(this.throttle) * 2.6 / this.mod.engineEff;
     if (this.engineState === 'starting') d.engine = 3;
     if (this.pumpOn) d.pump = 1.0;
     if (this.lightsOn) d.lights = 0.5;
-    d.total = d.base + d.bus + d.engine + d.pump + d.lights;
+    if (this.ekpMode && this.reactorOn && this.busPowered && this.ekpCharge < 100) d.ekp = 0.4 + this.ekpRate * 1.3;
+    d.total = d.base + d.bus + d.engine + d.pump + d.lights + d.ekp;
     return d;
+  }
+
+  setEkpMode(on) {
+    this.ekpMode = !!on;
+    if (!this.ekpMode) this.ekpRate = 0;
+  }
+
+  setEkpRate(v) {
+    this.ekpRate = Math.max(0, Math.min(1, v));
   }
 
   startEngine() {
     if (!this.busPowered) return 'no-bus';
     if (this.engineState === 'on' || this.engineState === 'starting') return 'already';
-    if (this.power < 8) return 'no-charge';
+    if (this.power < 8) {
+      if (this.ekpCharge >= 18) {
+        this.ekpCharge = Math.max(0, this.ekpCharge - 18);
+        this.power = Math.min(22, this.power + 12);
+      } else {
+        return 'no-charge';
+      }
+    }
     this.engineState = 'starting';
     this.engineTimer = 0;
     return 'ok';
@@ -239,11 +263,31 @@ export class Sim {
     if (this.pumpOn) drain += 1.0;
     if (this.lightsOn) drain += 0.5;
     this.power = Math.max(0, this.power - drain * dt);
+
+    // ручная зарядка ЭКП: только при работающем реакторе и поданной шине
+    if (this.ekpMode && this.reactorOn && this.busPowered && this.ekpCharge < 100) {
+      const charge = (0.4 + this.ekpRate * 1.6) * dt;
+      this.ekpCharge = Math.min(100, this.ekpCharge + charge);
+      this.power = Math.max(0, this.power - charge * 0.65);
+    } else if (this.ekpCharge > 0) {
+      // естественная саморазрядка пакета
+      this.ekpCharge = Math.max(0, this.ekpCharge - 0.01 * dt);
+    }
+
     if (this.power <= 0 && this.busPowered) {
-      this.busPowered = false;
-      if (this.engineOn || this.engineState === 'starting') this.stopEngine();
-      G.hud?.log('🔋 БАТАРЕИ РАЗРЯЖЕНЫ! Шина обесточена. Нужен реактор для зарядки.', 'bad');
-      G.sfx?.alarm();
+      if (this.ekpCharge >= 10) {
+        const reserve = Math.min(18, this.ekpCharge);
+        this.ekpCharge -= reserve;
+        this.power = reserve;
+        G.hud?.log('⚡ ЭКП автоматически подал резерв на шину.', 'warn');
+      } else {
+        this.busPowered = false;
+        this.ekpMode = false;
+        this.ekpRate = 0;
+        if (this.engineOn || this.engineState === 'starting') this.stopEngine();
+        G.hud?.log('🔋 БАТАРЕИ РАЗРЯЖЕНЫ! Шина обесточена. Нужен реактор для зарядки.', 'bad');
+        G.sfx?.alarm();
+      }
     }
 
     // --- двигатель: переходы состояний ---
@@ -297,6 +341,12 @@ export class Sim {
     // --- вода: помпа откачивает ---
     if (this.pumpOn && this.busPowered) {
       for (const k in this.water) this.water[k] = Math.max(0, this.water[k] - 0.06 * dt);
+    }
+
+    // без активной течи вода постепенно уходит в дренаж, чтобы не «висела» в отсеке
+    const leakIds = new Set((H?.leaks || []).map(l => l.comp.id));
+    for (const k in this.water) {
+      if (!leakIds.has(k)) this.water[k] = Math.max(0, this.water[k] - 0.012 * dt);
     }
 
     // --- кислород ---

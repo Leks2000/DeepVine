@@ -483,6 +483,19 @@ function buildProps() {
     G.scene.add(toggle);
   }
 
+  // историчный повторитель курса + прокладочная карта на правом пульте (без пересечений с мониторами)
+  const compass = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.08, 16), MAT.brass);
+  compass.position.set(1.35, 0.95, -8.9); compass.rotation.x = Math.PI / 2; G.scene.add(compass);
+  const compassGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.03, 16), MAT.glass);
+  compassGlass.position.set(1.35, 0.95, -8.94); compassGlass.rotation.x = Math.PI / 2; compassGlass.renderOrder = 5;
+  G.scene.add(compassGlass);
+  const mapBoard = box(0.85, 0.02, 0.62, MAT.ivory, -1.35, 0.86, -8.88);
+  mapBoard.rotation.x = -0.18;
+  for (let i = 0; i < 3; i++) {
+    const marker = box(0.06, 0.025, 0.12, i === 0 ? MAT.red : i === 1 ? MAT.green : MAT.brass, -1.55 + i * 0.16, 0.9, -8.95 + i * 0.05);
+    marker.rotation.x = -0.18;
+  }
+
   // потолочные кабельные лотки и трубы разнесены по высоте, чтобы визуально не пересекались
   for (let i = 0; i < 4; i++) {
     const z = -16 + i * 3.5;
@@ -911,11 +924,23 @@ function buildExterior() {
   cyl(0.04, 6, MAT.pipe2, -1.8, deckY + 0.15, 25, g, Math.PI / 2, 0);
   cyl(0.04, 6, MAT.pipe2,  1.8, deckY + 0.15, 25, g, Math.PI / 2, 0);
 
-  // океан вокруг (поверхность)
-  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 32, 32), MAT.ocean);
-  ocean.rotation.x = -Math.PI / 2; ocean.position.set(0, deckY - 0.5, 24);
-  g.add(ocean);
-  G.oceanMesh = ocean;
+  // океан вокруг (поверхность) — 4 плитки с «сухим» окном у корпуса,
+  // чтобы водная плоскость не проходила сквозь интерьер подлодки.
+  G.oceanMeshes = [];
+  const oceanY = deckY - 0.5;
+  const holeHalfX = 16;
+  const holeHalfZ = 22;
+  const addOceanTile = (w, d, x, z) => {
+    const tile = new THREE.Mesh(new THREE.PlaneGeometry(w, d, 24, 24), MAT.ocean);
+    tile.rotation.x = -Math.PI / 2;
+    tile.position.set(x, oceanY, z);
+    g.add(tile);
+    G.oceanMeshes.push(tile);
+  };
+  addOceanTile(400, 180, 0, 24 + holeHalfZ + 90);   // нос
+  addOceanTile(400, 180, 0, 24 - holeHalfZ - 90);   // корма
+  addOceanTile(180, holeHalfZ * 2, -holeHalfX - 90, 24); // левый борт
+  addOceanTile(180, holeHalfZ * 2, holeHalfX + 90, 24);  // правый борт
 
   // перила
   for (const sx of [-2.0, 2.0]) {
@@ -954,14 +979,22 @@ const _tmp = new THREE.Vector3();
 export function updateWorld(t, dt) {
   const sim = G.sim;
 
-  // волны океана на палубе + визуальное движение через окна
-  if (G.oceanMesh && G.flags.outside && sim.depth <= 0.5) {
-    const pos = G.oceanMesh.geometry.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getY(i);
-      pos.setZ(i, Math.sin(x * 0.3 + t * 1.2 + sim.boatX * 0.01) * 0.25 + Math.cos(y * 0.25 + t * 0.9 + sim.boatZ * 0.01) * 0.2);
+  // волны океана на палубе + визуальное движение (вода не проходит через корпус)
+  if (G.oceanMeshes && G.oceanMeshes.length) {
+    const showSurface = G.flags.outside && sim.depth <= 0.5;
+    for (const ocean of G.oceanMeshes) {
+      ocean.visible = showSurface;
+      if (!showSurface) continue;
+      const pos = ocean.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), y = pos.getY(i);
+        pos.setZ(i,
+          Math.sin(x * 0.3 + t * 1.2 + sim.boatX * 0.01) * 0.25
+          + Math.cos(y * 0.25 + t * 0.9 + sim.boatZ * 0.01) * 0.2
+        );
+      }
+      pos.needsUpdate = true;
     }
-    pos.needsUpdate = true;
   }
   // визуальное движение: планктон дрейфует мимо при ходу
   if (G.plankton && sim) {
@@ -1062,17 +1095,21 @@ export function updateWorld(t, dt) {
     }
   }
 
-  // вода в отсеках
+  // вода в отсеках (видна только при течи/реальном накоплении)
   if (G.waterMeshes && sim) {
+    const leakIds = new Set((G.hazards?.leaks || []).map(l => l.comp.id));
     for (const c of COMPARTMENTS) {
       const lvl = sim.water[c.id];
       const m = G.waterMeshes[c.id];
-      if (lvl > 0.01) {
+      const shouldShow = lvl > 0.02 && (leakIds.has(c.id) || lvl > 0.12);
+      if (shouldShow) {
         m.visible = true;
         m.scale.y = lvl;
         const floorY = c.lowerDeck ? -1.0 : 0;
         m.position.y = floorY + lvl / 2;
-      } else m.visible = false;
+      } else {
+        m.visible = false;
+      }
     }
   }
 }

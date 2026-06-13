@@ -273,6 +273,7 @@ function makeEnginePanel(sim) {
   const breakerLed = makeIndicator(cx + 0.55, cy + 0.55, cz, { rotY: face });
   const busLed = makeIndicator(cx + 0.55, cy + 0.2, cz, { rotY: face });
   const engineLed = makeIndicator(cx + 0.55, cy - 0.15, cz, { rotY: face });
+  const ekpLed = makeIndicator(cx + 0.55, cy - 0.85, cz, { rotY: face });
 
   makeToggle(cx - 0.15, cy + 0.55, cz, {
     label: '① ГЛАВНЫЙ РУБИЛЬНИК', rotY: face,
@@ -332,12 +333,39 @@ function makeEnginePanel(sim) {
     },
   });
 
-  return { breakerLed, busLed, engineLed, update() {
+  makeToggle(cx - 0.15, cy - 0.85, cz, {
+    label: '⑤ РЕЖИМ ЗАРЯДКИ ЭКП', rotY: face,
+    onChange(on) {
+      sim.setEkpMode(on);
+      if (!on) sim.setEkpRate(0);
+      if (on && (!sim.reactorOn || !sim.busPowered)) {
+        G.hud.hintFlash('Для фактической зарядки ЭКП нужен реактор ONLINE и запитанная шина.');
+      }
+      G.hud.log(on ? '⚡ ЭКП: режим зарядки включён.' : '⚡ ЭКП: режим зарядки выключен.', on ? 'ok' : '');
+      if (on) G.sfx.toggleSwitch();
+    },
+  });
+
+  makeLever(cx - 0.55, cy - 1.22, cz + 0.03, {
+    min: 0, max: 1, init: 0, rotY: face,
+    label: '⑥ ТОК ЗАРЯДКИ ЭКП', color: MAT.yellow,
+    canUse: () => sim.ekpMode && sim.reactorOn && sim.busPowered,
+    onChange(v) {
+      sim.setEkpRate(v);
+      if (v > 0.9 && sim.ekpCharge >= 98) G.hud.hintFlash('ЭКП заряжен почти полностью.');
+    },
+  });
+
+  return { breakerLed, busLed, engineLed, ekpLed, update() {
     breakerLed.setState(sim.breaker ? 'on' : 'off');
     busLed.setState(sim.busPowered ? 'on' : 'off');
     if (sim.engineState === 'on') engineLed.setState('on');
     else if (sim.engineState === 'starting') engineLed.setState('warn');
     else engineLed.setState('off');
+    if (sim.ekpCharge > 95) ekpLed.setState('on');
+    else if (sim.ekpMode && sim.reactorOn && sim.busPowered) ekpLed.setState('warn');
+    else if (sim.ekpCharge < 12) ekpLed.setState('err');
+    else ekpLed.setState('off');
   }};
 }
 
@@ -511,8 +539,8 @@ export function buildControls() {
   makeKlaxonPull(0.9, 2.85, -7.2);
   makeEmergencyBlow(2.8, 1.5, -6.5, -Math.PI / 2);
 
-  // дублирующий СТОП на мостике (пуск только в машинном отсеке внизу)
-  makeButton(2.0, 1.42, -8.35, {
+  // дублирующий СТОП/ПУСК на мостике (не перекрывают монитор)
+  makeButton(2.45, 1.0, -9.1, {
     label: 'СТОП ДВИГАТЕЛЯ (мостик)', rotY: -Math.PI / 2, color: MAT.red,
     canUse: () => sim.engineOn || sim.engineState === 'starting',
     onPress() {
@@ -524,12 +552,25 @@ export function buildControls() {
     },
   });
 
-  makeToggle(2.5, 1.55, -8.5, {
+  makeButton(-2.45, 1.0, -9.1, {
+    label: 'ПУСК ДВИГАТЕЛЯ (мостик)', rotY: Math.PI / 2, color: MAT.green,
+    canUse: () => sim.busPowered && sim.engineState === 'off',
+    onPress() {
+      const r = sim.startEngine();
+      if (r === 'ok') {
+        G.sfx.engineCrank();
+        G.hud.log('🔧 Дублирующий пуск: двигатель запускается.', 'ok');
+      } else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину в машинном отсеке.');
+      else if (r === 'no-charge') G.hud.hintFlash('Недостаточно энергии АКБ/ЭКП для запуска.');
+    },
+  });
+
+  makeToggle(2.7, 1.3, -9.55, {
     label: 'ПРОЖЕКТОР', rotY: -Math.PI / 2,
     onChange(on) { sim.lightsOn = on; G.hud.log(on ? '💡 Прожектор ВКЛ.' : '💡 Прожектор ВЫКЛ.', ''); },
   });
 
-  makeToggle(2.5, 1.2, -8.5, {
+  makeToggle(2.35, 1.0, -9.55, {
     label: 'ПОМПА ОТКАЧКИ', rotY: -Math.PI / 2,
     onChange(on) {
       sim.pumpOn = on;
@@ -537,7 +578,7 @@ export function buildControls() {
     },
   });
 
-  makeToggle(-2.5, 1.55, -8.5, {
+  makeToggle(-2.7, 1.3, -9.55, {
     label: 'АВАРИЙНОЕ ОСВЕЩЕНИЕ', rotY: Math.PI / 2,
     onChange(on) {
       G.emergencyOn = on;
