@@ -90,6 +90,23 @@ export class Player {
     return this.pos.z >= -18 && this.pos.z < -10 && this.pos.y < 1.0;
   }
 
+  _inLadderShaft() {
+    return (this.pos.x > 0.95 && this.pos.z > -12.4 && this.pos.z < -9.35)
+      || (this.pos.x < -0.95 && this.pos.z > 13.2 && this.pos.z < 16.9);
+  }
+
+  _preventLowerDeckStuck() {
+    // Нижняя палуба низкая и связана телепорт-площадками: мягко удерживаем игрока в свободном коридоре,
+    // а если он вышел из шахты лестницы на нижней высоте — поднимаем на обычную палубу.
+    if (this.pos.y < 1.0 && this.pos.z >= -18 && this.pos.z < -10) {
+      this.pos.x = Math.max(-2.35, Math.min(2.35, this.pos.x));
+      this.pos.z = Math.max(-17.35, Math.min(-10.35, this.pos.z));
+    } else if (this.pos.y < 1.0 && this.pos.z >= 14 && this.pos.z < 22) {
+      this.pos.x = Math.max(-2.35, Math.min(2.35, this.pos.x));
+      this.pos.z = Math.max(14.35, Math.min(21.35, this.pos.z));
+    }
+  }
+
   _updateLadder(dt) {
     // лестница → торпедный отсек (нос)
     if (this.pos.x > 1.0 && this.pos.z > -11.8 && this.pos.z < -9.5) {
@@ -101,13 +118,17 @@ export class Player {
       if (this.keys['KeyS']) this.pos.y = Math.max(EYE_LOWER, this.pos.y - dt * 2.5);
       if (this.keys['KeyW']) this.pos.y = Math.min(EYE_UPPER, this.pos.y + dt * 2.5);
     }
-    // плавный переход высоты без дёрганья
+    // плавный переход высоты без дёрганья; вне шахты нижний уровень сам возвращает игрока вверх
     const onLower = this._onLowerDeck() || this._onLowerEngine();
+    const inShaft = this._inLadderShaft();
     if (onLower && this.pos.y < 0.9) {
       this.pos.y += (EYE_LOWER - this.pos.y) * Math.min(1, dt * 12);
+    } else if (!onLower && !inShaft && this.pos.y < 1.3) {
+      this.pos.y += (EYE_UPPER - this.pos.y) * Math.min(1, dt * 12);
     } else if (!onLower && this.pos.y > 0.9 && this.pos.y < 1.3) {
       this.pos.y += (EYE_UPPER - this.pos.y) * Math.min(1, dt * 12);
     }
+    this._preventLowerDeckStuck();
   }
 
   _onLowerEngine() {
@@ -206,5 +227,6 @@ export class Player {
   teleport(x, z, yaw = null, y = null) {
     this.pos.set(x, y ?? EYE_UPPER, z);
     if (yaw !== null) this.yaw = yaw;
+    this._preventLowerDeckStuck();
   }
 }
