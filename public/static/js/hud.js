@@ -221,9 +221,10 @@ export class Hud {
 
     // полоски
     const bars = [
-      { label: 'КОРПУС', val: sim.hull, y: 40 },
-      { label: 'O₂', val: sim.o2, y: 75 },
-      { label: 'ЭНЕРГИЯ', val: sim.power, y: 110 },
+      { label: 'КОРПУС', val: sim.hull, y: 34 },
+      { label: 'O₂', val: sim.o2, y: 62 },
+      { label: 'АКБ', val: sim.power, y: 90 },
+      { label: 'ЭКП', val: sim.ekpCharge, y: 118 },
     ];
     for (const b of bars) {
       c.fillStyle = '#006644'; c.font = '11px monospace';
@@ -238,7 +239,7 @@ export class Hud {
     // распределение энергии
     const draw = sim.getPowerDraw();
     c.fillStyle = '#006644'; c.font = '10px monospace';
-    const powerY = 155;
+    const powerY = 145;
     c.fillText('ПОТРЕБЛЕНИЕ:', 10, powerY);
     const items = [
       { label: 'ДЕЖУРНОЕ', val: draw.base, max: 2 },
@@ -246,6 +247,7 @@ export class Hud {
       { label: 'ДВИГ', val: draw.engine, max: 5 },
       { label: 'ПОМПА', val: draw.pump, max: 2 },
       { label: 'СВЕТ', val: draw.lights, max: 2 },
+      { label: 'ЗАРЯД ЭКП', val: draw.ekp, max: 2.2 },
     ];
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
@@ -260,7 +262,7 @@ export class Hud {
       c.fillText(`${(it.val * 10).toFixed(0)}W`, 185, y - 2);
     }
     c.fillStyle = '#ffaa00'; c.font = '9px monospace';
-    c.fillText(`ИТОГО: ${(draw.total * 10).toFixed(0)}W`, 10, powerY + 100);
+    c.fillText(`ИТОГО: ${(draw.total * 10).toFixed(0)}W`, 10, powerY + 112);
 
     // предмет в руках
     c.fillStyle = '#006644'; c.font = '10px monospace';
@@ -326,6 +328,11 @@ export class Hud {
     if (sim.ballast > 0.3 && sim.depth < 10) {
       c.fillStyle = '#ff6644'; c.font = 'bold 11px monospace';
       c.fillText('⚠ БАЛЛАСТ ОТКРЫТ — ПОГРУЖЕНИЕ', 8, 35);
+    }
+
+    if (sim.ekpMode) {
+      c.fillStyle = '#80d8ff'; c.font = 'bold 11px monospace';
+      c.fillText(`⚡ ЭКП ЗАРЯД: ${(sim.ekpRate * 100).toFixed(0)}%`, 8, 52);
     }
 
     // последние 3 записи лога

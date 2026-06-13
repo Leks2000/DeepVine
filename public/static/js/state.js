@@ -10,6 +10,7 @@ export const G = {
   colliders: [],        // THREE.Box3 — статичные препятствия
   interactables: [],    // зарегистрированные интерактивные объекты
   exterior: null,       // группа внешнего мира (палуба, океан)
+  oceanMeshes: [],      // плитки океана вокруг корпуса (без пересечения интерьера)
   interiorLights: [],   // лампы по отсекам
   emergencyLights: [],  // аварийные лампы
   emergencyOn: false,   // аварийное освещение активно
