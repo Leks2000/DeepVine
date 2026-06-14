@@ -1,7 +1,7 @@
 // ============ ОРГАНЫ УПРАВЛЕНИЯ: рычаги, кнопки, клапаны, штурвал, клаксон, шлюз ============
 import * as THREE from 'three';
 import { G, registerInteractable } from './state.js';
-import { MAT, DECK } from './world.js';
+import { MAT, DECK, makeSign } from './world.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -251,16 +251,26 @@ function box3(parent, w, h, d, mat, x, y, z) {
 function makeLadderPad(x, y, z, { label, target, yaw = Math.PI, rotY = 0 }) {
   const grp = new THREE.Group(); grp.position.set(x, y, z); grp.rotation.y = rotY;
   const padMat = new THREE.MeshStandardMaterial({ color: 0x0d47a1, emissive: 0x00e5ff, emissiveIntensity: 0.45, transparent: true, opacity: 0.75 });
-  const pad = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.035, 0.58), padMat);
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.055, 0.78), padMat);
   grp.add(pad);
-  const arrow = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.44), MAT.hazard);
-  arrow.position.z = -0.02; grp.add(arrow);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.22, 3), MAT.hazard);
-  nose.rotation.x = Math.PI / 2; nose.position.z = -0.34; grp.add(nose);
+  const arrow = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.055, 0.54), MAT.hazard);
+  arrow.position.z = -0.03; grp.add(arrow);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.26, 3), MAT.hazard);
+  nose.rotation.x = Math.PI / 2; nose.position.z = -0.42; grp.add(nose);
+
+  // Вертикальный маяк и табличка делают спуск читаемым с уровня глаз, а не только при взгляде в пол.
+  const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.18, 10), MAT.routeGlow);
+  beacon.position.set(-0.48, 0.62, 0.2); grp.add(beacon);
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.018, 8, 18), MAT.routeGlow);
+  halo.rotation.x = Math.PI / 2; halo.position.set(-0.48, 1.24, 0.2); grp.add(halo);
+  const tagText = label.includes('ПОДЪЁМ') ? 'E: ВВЕРХ' : 'E: ВНИЗ';
+  const tag = makeSign(tagText, 0.86, 0.22, '#061519', '#80d8ff');
+  tag.position.set(0, 0.92, 0.36); tag.rotation.x = -0.12; grp.add(tag);
+
   G.scene.add(grp);
   registerInteractable({
     mesh: grp,
-    hint: () => `${label} — [E] перейти без застревания`,
+    hint: () => `${label} — [E] перейти; голубой маяк показывает безопасную точку`,
     onPress() {
       G.sfx.doorOpen();
       G.player.teleport(target.x, target.z, yaw, target.y);

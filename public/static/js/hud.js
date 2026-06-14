@@ -170,7 +170,7 @@ export class Hud {
     // RPM
     c.fillStyle = '#00aa88'; c.font = '16px monospace';
     c.fillText(`RPM: ${(sim.rpm * 100).toFixed(0)}%`, 14, 200);
-    c.fillText(`ГОРКА: ${sim.throttle > 0 ? '+' : ''}${(sim.throttle * 100).toFixed(0)}%`, 180, 200);
+    c.fillText(`ХОД: ${sim.throttle > 0 ? '+' : ''}${(sim.throttle * 100).toFixed(0)}%`, 180, 200);
     c.fillStyle = sim.engineFault ? '#ff5544' : '#80d8ff'; c.font = '12px monospace';
     c.fillText(`ТОПЛ:${sim.fuelValve ? 'ОТКР' : 'ЗАКР'}  МАСЛО:${(sim.oilPressure * 100).toFixed(0)}%  ПОДОГР:${sim.preheatReady ? 'OK' : '—'}`, 14, 218);
     if (sim.engineFault) c.fillText(`АВАРИЯ: ${sim.engineFault}`, 250, 218);
@@ -314,57 +314,67 @@ export class Hud {
     m.tex.needsUpdate = true;
   }
 
+  _engineNextStep(sim) {
+    if (!sim.breaker) return '① РУБИЛЬНИК';
+    if (!sim.busPowered) return '② ШИНА ПИТАНИЯ';
+    if (!sim.fuelValve) return '③ ТОПЛИВО';
+    if (sim.oilPressure < 0.55) return '④ МАСЛОПОМПА';
+    if (!sim.preheatReady) return '⑤ ПОДОГРЕВ';
+    if (sim.engineFault) return '⑦ RESET';
+    return '⑥ START';
+  }
+
   _drawAlerts(sim) {
     const m = this._monitors.alerts;
     const c = m.cv.getContext('2d');
     const w = m.cv.width, h = m.cv.height;
     c.fillStyle = '#0a0404'; c.fillRect(0, 0, w, h);
+    c.strokeStyle = '#5a1b1b'; c.lineWidth = 2;
+    c.strokeRect(3, 3, w - 6, h - 6);
 
-    // текущая миссия (сверху)
     const status = sim.getMissionStatus();
-    if (status) {
-      c.fillStyle = '#00aa66'; c.font = 'bold 12px monospace';
-      c.fillText(`▶ ${status.mission.name}`, 8, 16);
+    c.fillStyle = '#00aa66'; c.font = 'bold 12px monospace';
+    c.fillText(status ? `▶ ${status.mission.name}` : '▶ ВСЕ МИССИИ ВЫПОЛНЕНЫ', 8, 16);
+
+    const warnings = [];
+    if (sim.ballast > 0.3 && sim.depth < 10) warnings.push({ color: '#ff6644', text: '⚠ БАЛЛАСТ ОТКРЫТ — ПОГРУЖЕНИЕ' });
+    if (sim.ekpMode) warnings.push({ color: '#80d8ff', text: `⚡ ЭКП ЗАРЯД: ${(sim.ekpRate * 100).toFixed(0)}%` });
+    if (sim.engineFault) warnings.push({ color: '#ff4444', text: `⛔ ДВИГАТЕЛЬ: ${sim.engineFault} · RESET` });
+    else if (sim.engineState === 'starting') warnings.push({ color: '#ffaa00', text: '⏳ ДВИГАТЕЛЬ: СТАРТЕР КРУТИТ' });
+    else if (sim.engineState === 'off' && !sim.engineReady) warnings.push({ color: '#ffaa00', text: `ПУСК: ${this._engineNextStep(sim)}` });
+    if (sim.power < 18) warnings.push({ color: '#ffaa00', text: `АКБ НИЗКИЙ: ${sim.power.toFixed(0)}%` });
+
+    let y = 34;
+    for (const warning of warnings.slice(0, 3)) {
+      c.fillStyle = warning.color; c.font = 'bold 10px monospace';
+      c.fillText(warning.text.length > 40 ? warning.text.substring(0, 40) + '…' : warning.text, 8, y);
+      y += 16;
     }
 
-    // предупреждение о балласте
-    if (sim.ballast > 0.3 && sim.depth < 10) {
-      c.fillStyle = '#ff6644'; c.font = 'bold 11px monospace';
-      c.fillText('⚠ БАЛЛАСТ ОТКРЫТ — ПОГРУЖЕНИЕ', 8, 35);
+    if (warnings.length === 0) {
+      c.fillStyle = '#004d30'; c.font = '11px monospace';
+      c.fillText('СИСТЕМЫ НОМИНАЛЬНЫ', 8, y);
+      y += 16;
     }
 
-    if (sim.ekpMode) {
-      c.fillStyle = '#80d8ff'; c.font = 'bold 11px monospace';
-      c.fillText(`⚡ ЭКП ЗАРЯД: ${(sim.ekpRate * 100).toFixed(0)}%`, 8, 52);
-    }
+    c.strokeStyle = '#321010'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(8, Math.min(y - 7, 70)); c.lineTo(w - 8, Math.min(y - 7, 70)); c.stroke();
 
-    if (sim.engineFault) {
-      c.fillStyle = '#ff4444'; c.font = 'bold 11px monospace';
-      c.fillText(`⛔ ДВИГАТЕЛЬ: ${sim.engineFault} · RESET`, 8, 70);
-    } else if (sim.busPowered && sim.engineState === 'off' && !sim.engineReady) {
-      c.fillStyle = '#ffaa00'; c.font = 'bold 10px monospace';
-      c.fillText('ПУСК: ТОПЛИВО → МАСЛО → ПОДОГРЕВ → START', 8, 70);
-    }
-
-    // последние 3 записи лога
-    const recent = this.logEntries.slice(-3);
+    // Лог вынесен ниже предупреждений, чтобы не перекрывать сообщения балласта/двигателя.
+    const recent = this.logEntries.slice(-2);
+    const logY = Math.min(y + 4, 68);
     for (let i = 0; i < recent.length; i++) {
       const e = recent[recent.length - 1 - i];
-      const y = 35 + i * 22;
+      const rowY = logY + i * 13;
       const age = (Date.now() - e.time) / 1000;
-      const alpha = Math.max(0.3, 1 - age / 12);
+      const alpha = Math.max(0.35, 1 - age / 12);
       if (e.cls === 'bad') c.fillStyle = `rgba(255, 80, 80, ${alpha})`;
       else if (e.cls === 'warn') c.fillStyle = `rgba(255, 180, 80, ${alpha})`;
       else if (e.cls === 'ok') c.fillStyle = `rgba(80, 255, 140, ${alpha})`;
       else c.fillStyle = `rgba(140, 180, 160, ${alpha})`;
-      c.font = '11px monospace';
-      const txt = e.msg.length > 44 ? e.msg.substring(0, 44) + '…' : e.msg;
-      c.fillText(txt, 8, y);
-    }
-
-    if (recent.length === 0 && !status) {
-      c.fillStyle = '#004d30'; c.font = '12px monospace';
-      c.fillText('СИСТЕМЫ НОМИНАЛЬНЫ', 10, h / 2 + 5);
+      c.font = '10px monospace';
+      const txt = e.msg.length > 38 ? e.msg.substring(0, 38) + '…' : e.msg;
+      c.fillText(txt, 8, rowY);
     }
 
     m.tex.needsUpdate = true;

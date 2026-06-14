@@ -843,6 +843,18 @@ function buildUnderwater() {
     }
   }
 
+  // зелёные метки POI на сонаре создаём после G.poi: сам сонар строится раньше, на мостике.
+  if (G.sonar && (!G.sonar.dots || G.sonar.dots.length === 0)) {
+    G.sonar.dots = [];
+    const poiDotGeo = new THREE.CircleGeometry(0.025, 8);
+    for (const p of G.poi) {
+      const dot = new THREE.Mesh(poiDotGeo, new THREE.MeshBasicMaterial({ color: p.color, transparent: true, opacity: 0.9 }));
+      dot.position.z = 0.065;
+      G.sonar.grp.add(dot);
+      G.sonar.dots.push({ dot, poi: p });
+    }
+  }
+
   // жёлтые метки лута на сонаре
   if (G.sonar) {
     const dotGeo = new THREE.CircleGeometry(0.015, 6);
