@@ -70,6 +70,8 @@ export class Sim {
     this.currentMission = 0;
     this.missionLog = [];
     this.credits = 0;
+    this.radioBriefing = 'РАДИО: запросите брифинг на мостике';
+    this.radioMessages = 0;
   }
 
   _initMissions() {
@@ -123,6 +125,30 @@ export class Sim {
       objectives: m.objectives.map(o => ({ text: o.text, done: o.check() })),
       allDone: done,
     };
+  }
+
+  requestRadioMission() {
+    const status = this.getMissionStatus();
+    let nav = 'сонар держит ближайший POI';
+    if (G.poi?.length) {
+      let best = null;
+      for (const p of G.poi) {
+        const dx = p.x - this.boatX;
+        const dz = p.z - this.boatZ;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (!best || dist < best.dist) best = { p, dist };
+      }
+      if (best) nav = `${best.p.name}: ${best.dist.toFixed(0)}м`;
+    }
+    this.radioMessages++;
+    if (status) {
+      const left = status.objectives.filter(o => !o.done).map(o => o.text).join('; ') || 'ожидайте подтверждения';
+      this.radioBriefing = `РАДИО-${this.radioMessages}: ${status.mission.name} · ${left} · ${nav}`;
+    } else {
+      this.radioBriefing = `РАДИО-${this.radioMessages}: все задачи закрыты · возвращайтесь на базу`;
+    }
+    G.hud?.log(`📻 ${this.radioBriefing}`, 'ok');
+    return this.radioBriefing;
   }
 
   completeMission() {

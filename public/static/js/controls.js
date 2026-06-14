@@ -697,6 +697,17 @@ export function buildControls() {
     },
   });
 
+  makeButton(-2.45, 1.44, -10.45, {
+    label: 'РАДИО: ЗАПРОС МИССИИ', rotY: Math.PI / 2,
+    color: new THREE.MeshStandardMaterial({ color: 0x1565c0, emissive: 0x001a33, emissiveIntensity: 0.25 }),
+    canUse: () => sim.busPowered || sim.reactorOn,
+    onPress() {
+      const msg = sim.requestRadioMission();
+      G.sfx?.sonarPing();
+      G.hud.hintFlash(msg);
+    },
+  });
+
   makeToggle(-2.7, 1.3, -9.55, {
     label: 'АВАРИЙНОЕ ОСВЕЩЕНИЕ', rotY: Math.PI / 2,
     onChange(on) {

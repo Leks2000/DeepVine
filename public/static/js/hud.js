@@ -65,11 +65,13 @@ export class Hud {
     this._cameraLabel = label;
     const m = this._monitors.camera;
     if (!m) return;
-    // обновляем текстуру с рендера камеры
-    if (m.mesh.material.map) m.mesh.material.map.dispose();
-    m.mesh.material.map = texture;
-    m.mesh.material.needsUpdate = true;
-    m.tex = texture;
+    // RenderTarget texture принадлежит внешней камере: нельзя dispose() каждый кадр,
+    // иначе CCTV-монитор начинает мигать/терять изображение после переключений.
+    if (m.mesh.material.map !== texture) {
+      m.mesh.material.map = texture;
+      m.mesh.material.needsUpdate = true;
+      m.tex = texture;
+    }
   }
 
   log(msg, cls = '') {
@@ -302,6 +304,12 @@ export class Hud {
         c.font = '13px monospace';
         c.fillText(o.done ? '● ' + o.text : '○ ' + o.text, 12, y);
       }
+
+      // радио-строка с последним брифингом, чтобы задание было не только чеклистом,
+      // а ощущалось как полученное через рубочный радиопост.
+      c.fillStyle = '#80d8ff'; c.font = '9px monospace';
+      const radio = sim.radioBriefing || 'РАДИО: запросите брифинг на мостике';
+      c.fillText(radio.length > 44 ? radio.substring(0, 44) + '…' : radio, 10, h - 30);
 
       // награда
       c.fillStyle = '#ffcc00'; c.font = '11px monospace';

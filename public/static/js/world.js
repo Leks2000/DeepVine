@@ -803,9 +803,11 @@ function buildUnderwater() {
   // точки интереса — светящиеся маяки + лут
   G.poi = [];
   const poiDefs = [
-    { x: 120, z: -180, color: 0x00e676, name: 'СТАНЦИЯ «ГЛУБИНА»' },
-    { x: -240, z: -90, color: 0xffc400, name: 'ЗАТОНУВШИЙ СУХОГРУЗ' },
-    { x: 60, z: 300, color: 0xff5252, name: 'ПОДВОДНЫЙ ВУЛКАН' },
+    { x: 120, z: -180, color: 0x00e676, name: 'СТАНЦИЯ «ГЛУБИНА»', kind: 'station' },
+    { x: -240, z: -90, color: 0xffc400, name: 'ЗАТОНУВШИЙ СУХОГРУЗ', kind: 'wreck' },
+    { x: 60, z: 300, color: 0xff5252, name: 'ПОДВОДНЫЙ ВУЛКАН', kind: 'vent' },
+    { x: -360, z: 260, color: 0x80d8ff, name: 'ПОТЕРЯННЫЙ КОНТЕЙНЕР', kind: 'container' },
+    { x: 360, z: 120, color: 0xb388ff, name: 'ПОДВОДНАЯ ПЕЩЕРА', kind: 'cave' },
   ];
   G.lootCrates = [];
   for (const p of poiDefs) {
@@ -818,6 +820,41 @@ function buildUnderwater() {
     const tower = new THREE.Mesh(new THREE.CylinderGeometry(1, 2.4, 26, 8),
       new THREE.MeshStandardMaterial({ color: 0x222a30, roughness: 0.7 }));
     tower.position.y = -14; grp.add(tower);
+
+    // Каждый POI имеет узнаваемый силуэт, чтобы через камеры/иллюминаторы было понятно,
+    // куда лодка реально пришла: станция, обломки, контейнер, вулкан или пещера.
+    if (p.kind === 'container') {
+      const contMat = new THREE.MeshStandardMaterial({ color: 0xd96b2b, roughness: 0.65, metalness: 0.35 });
+      const cont = new THREE.Mesh(new THREE.BoxGeometry(9, 3, 3.5), contMat);
+      cont.position.y = -27; cont.rotation.set(0.12, 0.35, -0.08); grp.add(cont);
+      for (let r = -3.6; r <= 3.6; r += 1.2) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.08, 3.15, 3.7), MAT.brass);
+        rib.position.set(r, -27, 0); rib.rotation.copy(cont.rotation); grp.add(rib);
+      }
+    } else if (p.kind === 'wreck') {
+      const wreckHull = new THREE.Mesh(new THREE.BoxGeometry(18, 3.2, 5.5), new THREE.MeshStandardMaterial({ color: 0x3a3530, roughness: 0.85, metalness: 0.35 }));
+      wreckHull.position.y = -28; wreckHull.rotation.set(0.25, -0.55, 0.18); grp.add(wreckHull);
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.25, 12, 6), MAT.dark);
+      mast.position.set(1.5, -22, 0.5); mast.rotation.z = -0.55; grp.add(mast);
+    } else if (p.kind === 'cave') {
+      const rockMat2 = new THREE.MeshStandardMaterial({ color: 0x1f2a28, roughness: 0.95 });
+      for (let i = 0; i < 9; i++) {
+        const stone = new THREE.Mesh(new THREE.DodecahedronGeometry(3 + (i % 3), 0), rockMat2);
+        const a = i / 9 * Math.PI * 2;
+        stone.position.set(Math.cos(a) * 7, -28 + Math.sin(i) * 1.5, Math.sin(a) * 4);
+        stone.scale.y = 1.6;
+        grp.add(stone);
+      }
+    } else if (p.kind === 'vent') {
+      const coneVent = new THREE.Mesh(new THREE.ConeGeometry(5, 18, 14), new THREE.MeshStandardMaterial({ color: 0x2d2522, roughness: 0.9 }));
+      coneVent.position.y = -30; grp.add(coneVent);
+      const glowVent = new THREE.PointLight(0xff5252, 180, 90, 2);
+      glowVent.position.y = -18; grp.add(glowVent);
+    } else {
+      const dock = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 9, 12), new THREE.MeshStandardMaterial({ color: 0x455a64, roughness: 0.55, metalness: 0.5 }));
+      dock.rotation.x = Math.PI / 2; dock.position.y = -24; grp.add(dock);
+    }
+
     grp.position.set(p.x, -SEABED_DEPTH + 28, p.z);
     uw.add(grp);
     G.poi.push({ grp, beacon, ...p });

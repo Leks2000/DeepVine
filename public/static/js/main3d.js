@@ -142,18 +142,31 @@ function loop(now = 0) {
     if (G.extCameras && G.sim) {
       const sim = G.sim;
       const th = sim.heading * Math.PI / 180;
-      const boatPos = new THREE.Vector3(sim.boatX, -sim.depth, sim.boatZ);
       for (const ec of G.extCameras) {
-        const offset = ec.offset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), th);
-        ec.cam.position.copy(boatPos).add(offset);
-        const target = ec.target.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), th).add(boatPos);
-        ec.cam.lookAt(target);
+        // Лодка в игре остаётся в локальном центре, а мир смещается вокруг неё.
+        // Поэтому внешние CCTV-камеры крепятся к статичному корпусу, иначе монитор
+        // «уезжает» от модели после первых метров хода.
+        ec.cam.position.copy(ec.offset);
+        ec.cam.lookAt(ec.target);
       }
-      // рендер активной камеры в текстуру
+      // рендер активной камеры в текстуру: на время кадра показываем внешний корпус,
+      // даже если игрок находится внутри — иначе монитор камер видел бы пустой океан.
       const active = G.extCameras[G.extCameraIdx];
+      const prevExterior = G.exterior?.visible;
+      const prevSurface = G.underwaterSurface?.visible;
+      const prevSun = G.extSun?.intensity;
+      const prevAmb = G.extAmb?.intensity;
+      if (G.exterior) G.exterior.visible = true;
+      if (G.underwaterSurface) G.underwaterSurface.visible = sim.depth <= 0.5;
+      if (G.extSun) G.extSun.intensity = sim.depth <= 0.5 ? 1.2 : 0.15;
+      if (G.extAmb) G.extAmb.intensity = sim.depth <= 0.5 ? 0.6 : 0.18;
       G.renderer.setRenderTarget(active.rt);
       G.renderer.render(G.scene, active.cam);
       G.renderer.setRenderTarget(null);
+      if (G.exterior) G.exterior.visible = prevExterior;
+      if (G.underwaterSurface) G.underwaterSurface.visible = prevSurface;
+      if (G.extSun) G.extSun.intensity = prevSun;
+      if (G.extAmb) G.extAmb.intensity = prevAmb;
       if (G.hud?.updateCameraFeed) G.hud.updateCameraFeed(active.rt.texture, active.name);
     }
 
