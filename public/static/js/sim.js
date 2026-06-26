@@ -69,6 +69,7 @@ export class Sim {
     this.missions = this._initMissions();
     this.currentMission = 0;
     this.missionLog = [];
+    this.shipLog = [];
     this.credits = 0;
     this.radioBriefing = 'РАДИО: запросите брифинг на мостике';
     this.radioMessages = 0;
@@ -151,6 +152,11 @@ export class Sim {
     return this.radioBriefing;
   }
 
+  addShipLog(text, type = '') {
+    this.shipLog.unshift({ text, type, time: Date.now() });
+    this.shipLog = this.shipLog.slice(0, 5);
+  }
+
   completeMission() {
     const m = this.missions[this.currentMission];
     if (!m || m.completed) return;
@@ -160,8 +166,10 @@ export class Sim {
     if (this.currentMission < this.missions.length - 1) {
       this.currentMission++;
       G.hud?.log(`✅ Миссия "${m.name}" выполнена! +${m.reward} кредитов. Новая: "${this.missions[this.currentMission].name}"`, 'ok');
+      this.addShipLog(`Миссия закрыта: ${m.name} (+${m.reward})`, 'ok');
     } else {
       G.hud?.log(`🏆 Все миссии выполнены! Кредитов: ${this.credits}`, 'ok');
+      this.addShipLog('Все миссии выполнены', 'ok');
     }
   }
 
@@ -257,6 +265,18 @@ export class Sim {
 
   get engineReady() {
     return this.busPowered && this.fuelValve && this.oilPressure >= 0.55 && this.preheatReady && !this.engineFault;
+  }
+
+  quickStartEngine() {
+    if (!this.reactorOn) return 'no-reactor';
+    this.setBreaker(true);
+    const bus = this.powerBus();
+    if (bus === 'no-charge') return 'no-charge';
+    this.setFuelValve(true);
+    this.setOilPrimeLevel(1);
+    const heat = this.preheatReady ? 'ok' : this.preheatEngine();
+    if (heat !== 'ok') return heat;
+    return this.startEngine();
   }
 
   startEngine() {
@@ -388,6 +408,7 @@ export class Sim {
         this.engineState = 'on';
         this.preheatReady = false;
         G.hud?.log('🟢 ДВИГАТЕЛЬ ONLINE. Последовательность запуска выполнена.', 'ok');
+        this.addShipLog('Двигатель ONLINE: питание, топливо, масло и подогрев в норме', 'ok');
         G.sfx?.engineOnline();
       }
     } else if (this.engineState === 'on') {
@@ -399,6 +420,7 @@ export class Sim {
       if (this.rpm <= 0.01) {
         this.rpm = 0; this.engineState = 'off';
         G.hud?.log('⚫ Двигатель остановлен.', '');
+        this.addShipLog('Двигатель остановлен', '');
       }
     } else {
       this.rpm = Math.max(0, this.rpm - dt * 0.6);
@@ -469,6 +491,7 @@ export class Sim {
     if (this.ballast > 0.3 && this.depth < 10 && !this._ballastWarned) {
       this._ballastWarned = true;
       G.hud?.log('⚠ БАЛЛАСТ ОТКРЫТ — ПОГРУЖЕНИЕ!', 'warn');
+      this.addShipLog('Балласт открыт: лодка начинает погружение', 'warn');
       G.sfx?.alarm();
     }
     if (this.ballast < 0.1) this._ballastWarned = false;

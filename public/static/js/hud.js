@@ -311,6 +311,16 @@ export class Hud {
       const radio = sim.radioBriefing || 'РАДИО: запросите брифинг на мостике';
       c.fillText(radio.length > 44 ? radio.substring(0, 44) + '…' : radio, 10, h - 30);
 
+      // журнал корабля: последние причины событий, чтобы аварии не выглядели рандомом.
+      c.fillStyle = '#ffaa00'; c.font = 'bold 10px monospace';
+      c.fillText('ЖУРНАЛ:', 10, h - 72);
+      const log = sim.shipLog || [];
+      c.fillStyle = '#cfd8dc'; c.font = '9px monospace';
+      for (let i = 0; i < Math.min(3, log.length); i++) {
+        const text = log[i].text.length > 42 ? log[i].text.substring(0, 42) + '…' : log[i].text;
+        c.fillText(`• ${text}`, 10, h - 58 + i * 11);
+      }
+
       // награда
       c.fillStyle = '#ffcc00'; c.font = '11px monospace';
       c.fillText(`НАГРАДА: ${status.mission.reward} очков`, 10, h - 15);

@@ -459,10 +459,23 @@ function makeEnginePanel(sim) {
 
 // ---------- ТОРПЕДНЫЙ ПУЛЬТ (нижняя палуба, нос) ----------
 function makeTorpedoPanel(sim) {
-  const cz = -15.2, cy = -0.35, face = Math.PI;
+  const cz = -15.2, cy = 0.18, face = Math.PI;
+  const sT = makeSign('TORPEDO CONTROL · E', 1.7, 0.22, '#120707', '#ffcc00');
+  sT.position.set(0, cy + 0.48, cz - 0.05);
+  sT.rotation.y = Math.PI;
+  G.scene.add(sT);
+  makeButton(0, cy + 0.28, cz, {
+    label: 'ПРОВЕРКА ТОРПЕДНОГО АППАРАТА', rotY: face, color: MAT.green,
+    canUse: () => sim.busPowered || sim.reactorOn,
+    onPress() {
+      G.sfx.buttonOk();
+      sim.addShipLog?.('Торпедный аппарат проверен: цепи и створки готовы', 'ok');
+      G.hud.log('✅ Торпедный аппарат проверен. Можно заряжать/пускать.', 'ok');
+    },
+  });
   makeButton(-0.5, cy, cz, {
     label: `ТОРПЕДА ЛЕВ — ПУСК (${sim.torpedoes})`, rotY: face, color: MAT.red,
-    canUse: () => sim.torpedoes > 0 && sim.engineOn,
+    canUse: () => sim.torpedoes > 0 && (sim.busPowered || sim.engineOn),
     onPress() {
       if (sim.torpedoes > 0) {
         sim.torpedoes--;
@@ -473,7 +486,7 @@ function makeTorpedoPanel(sim) {
   });
   makeButton(0.5, cy, cz, {
     label: `ТОРПЕДА ПРАВ — ПУСК (${sim.torpedoes})`, rotY: face, color: MAT.red,
-    canUse: () => sim.torpedoes > 0 && sim.engineOn,
+    canUse: () => sim.torpedoes > 0 && (sim.busPowered || sim.engineOn),
     onPress() {
       if (sim.torpedoes > 0) {
         sim.torpedoes--;
@@ -482,11 +495,12 @@ function makeTorpedoPanel(sim) {
       }
     },
   });
-  makeButton(0, cy - 0.45, cz, {
+  makeButton(0, cy - 0.62, cz, {
     label: 'ПЕРЕЗАРЯДКА ТОРПЕДНОГО АППАРАТА', rotY: face, color: MAT.yellow,
     canUse: () => sim.torpedoes < 4,
     onPress() {
       sim.torpedoes = Math.min(4, sim.torpedoes + 1);
+      sim.addShipLog?.(`Торпеда загружена: ${sim.torpedoes}/4`, 'ok');
       G.sfx.wrench();
       G.hud.log(`🔧 Торпеда заряжена. Боезапас: ${sim.torpedoes}/4`, 'ok');
     },
@@ -499,7 +513,7 @@ function makeDeckRoutes() {
   // «поймать» лестницу клавишами W/S, а маршрут читается по подсветке на полу.
   makeLadderPad(2.05, 0.08, -10.55, {
     label: 'СПУСК В ТОРПЕДНЫЙ ОТСЕК',
-    target: { x: 1.55, y: 0.42, z: -12.3 },
+    target: { x: 1.55, y: 0.95, z: -12.3 },
     yaw: Math.PI * 0.92,
   });
   makeLadderPad(1.55, -0.95, -12.25, {
@@ -509,7 +523,7 @@ function makeDeckRoutes() {
   });
   makeLadderPad(-2.05, 0.08, 15.0, {
     label: 'СПУСК В МАШИННЫЙ НИЖНИЙ ОТСЕК',
-    target: { x: -1.55, y: 0.42, z: 16.55 },
+    target: { x: -1.55, y: 0.95, z: 16.55 },
     yaw: 0,
     rotY: Math.PI,
   });
@@ -681,6 +695,20 @@ export function buildControls() {
       else if (r === 'no-preheat') G.hud.hintFlash('Выполните предпусковой подогрев в машинном отсеке.');
       else if (r === 'fault') G.hud.hintFlash('Сначала сбросьте аварийную блокировку двигателя.');
       else if (r === 'no-charge') G.hud.hintFlash('Недостаточно энергии АКБ/ЭКП для запуска.');
+    },
+  });
+
+  makeButton(-2.45, 0.62, -9.1, {
+    label: 'БЫСТРЫЙ ПУСК ДВИГАТЕЛЯ', rotY: Math.PI / 2, color: MAT.yellow,
+    canUse: () => sim.reactorOn && sim.engineState === 'off',
+    onPress() {
+      const r = sim.quickStartEngine();
+      if (r === 'ok') {
+        G.sfx.engineCrank();
+        G.hud.log('🟡 Быстрый пуск: рубильник, шина, топливо, масло и подогрев выполнены.', 'ok');
+      } else if (r === 'no-reactor') G.hud.hintFlash('Сначала запустите реактор 1→2→3.');
+      else if (r === 'no-charge') G.hud.hintFlash('Недостаточно заряда АКБ/ЭКП.');
+      else G.hud.hintFlash(`Быстрый пуск не выполнен: ${r}`);
     },
   });
 
