@@ -4,7 +4,7 @@ import { G } from './state.js';
 import { spectatorMove } from './dev.js';
 
 const EYE_UPPER = 1.62;
-const EYE_LOWER = 0.42;
+const EYE_LOWER = 0.95;
 const RADIUS = 0.32;
 const WALK = 3.2, RUN = 5.4;
 
@@ -18,7 +18,7 @@ export class Player {
     this.keys = {};
     this.locked = false;
     this.raycaster = new THREE.Raycaster();
-    this.raycaster.far = 4.2;
+    this.raycaster.far = 6.2;
     this.focus = null;
     this.dragging = null;
     this.holding = null;
@@ -87,7 +87,7 @@ export class Player {
   }
 
   _onLowerDeck() {
-    return this.pos.z >= -18 && this.pos.z < -10 && this.pos.y < 1.0;
+    return this.pos.z >= -18 && this.pos.z < -10 && this.pos.y < 1.25;
   }
 
   _inLadderShaft() {
@@ -98,10 +98,10 @@ export class Player {
   _preventLowerDeckStuck() {
     // Нижняя палуба низкая и связана телепорт-площадками: мягко удерживаем игрока в свободном коридоре,
     // а если он вышел из шахты лестницы на нижней высоте — поднимаем на обычную палубу.
-    if (this.pos.y < 1.0 && this.pos.z >= -18 && this.pos.z < -10) {
+    if (this.pos.y < 1.25 && this.pos.z >= -18 && this.pos.z < -10) {
       this.pos.x = Math.max(-2.35, Math.min(2.35, this.pos.x));
       this.pos.z = Math.max(-17.35, Math.min(-10.35, this.pos.z));
-    } else if (this.pos.y < 1.0 && this.pos.z >= 14 && this.pos.z < 22) {
+    } else if (this.pos.y < 1.25 && this.pos.z >= 14 && this.pos.z < 22) {
       this.pos.x = Math.max(-2.35, Math.min(2.35, this.pos.x));
       this.pos.z = Math.max(14.35, Math.min(21.35, this.pos.z));
     }
@@ -121,18 +121,18 @@ export class Player {
     // плавный переход высоты без дёрганья; вне шахты нижний уровень сам возвращает игрока вверх
     const onLower = this._onLowerDeck() || this._onLowerEngine();
     const inShaft = this._inLadderShaft();
-    if (onLower && this.pos.y < 0.9) {
+    if (onLower && this.pos.y < 1.2) {
       this.pos.y += (EYE_LOWER - this.pos.y) * Math.min(1, dt * 12);
-    } else if (!onLower && !inShaft && this.pos.y < 1.3) {
+    } else if (!onLower && !inShaft && this.pos.y < 1.35) {
       this.pos.y += (EYE_UPPER - this.pos.y) * Math.min(1, dt * 12);
-    } else if (!onLower && this.pos.y > 0.9 && this.pos.y < 1.3) {
+    } else if (!onLower && this.pos.y > 1.2 && this.pos.y < 1.35) {
       this.pos.y += (EYE_UPPER - this.pos.y) * Math.min(1, dt * 12);
     }
     this._preventLowerDeckStuck();
   }
 
   _onLowerEngine() {
-    return this.pos.z >= 14 && this.pos.z < 22 && this.pos.y < 1.0;
+    return this.pos.z >= 14 && this.pos.z < 22 && this.pos.y < 1.25;
   }
 
   update(dt) {
