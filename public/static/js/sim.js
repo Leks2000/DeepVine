@@ -18,6 +18,7 @@ export class Sim {
     this.fuelValve = false;     // топливный кран открыт
     this.oilPressure = 0;       // 0..1 ручная маслопомпа / давление масла
     this.preheatReady = false;  // предпусковой подогрев завершён
+    this.oilPrimed = false;     // масло было прокачано до безопасного порога запуска
     this.engineFault = null;    // код аварийной блокировки
     // двигатель: off | starting | on | stopping
     this.engineState = 'off';
@@ -245,6 +246,22 @@ export class Sim {
 
   setOilPrimeLevel(v) {
     this.oilPressure = Math.max(this.oilPressure, Math.max(0, Math.min(1, v)));
+    if (this.oilPressure >= 0.55) this.oilPrimed = true;
+  }
+
+  getEngineStartStatus() {
+    if (this.engineState === 'on') return { ok: false, code: 'already-on', label: 'двигатель уже работает' };
+    if (this.engineState === 'starting') return { ok: false, code: 'already-starting', label: 'стартер уже крутит' };
+    if (this.engineState === 'stopping') return { ok: false, code: 'stopping', label: 'дождитесь полной остановки' };
+    if (this.engineFault) return { ok: false, code: 'fault', label: 'сбросьте аварийную блокировку ⑦ RESET' };
+    if (!this.breaker) return { ok: false, code: 'no-breaker', label: 'включите главный рубильник ①' };
+    if (!this.busPowered) return { ok: false, code: 'no-bus', label: 'подайте питание на шину ②' };
+    if (!this.fuelValve) return { ok: false, code: 'no-fuel', label: 'откройте топливный кран ③' };
+    if (this.oilPressure < 0.55) return { ok: false, code: 'no-oil', label: 'докачайте масло ④ до 55%' };
+    if (!this.oilPrimed) return { ok: false, code: 'no-oil-prime', label: 'зафиксируйте прокачку масла ④' };
+    if (!this.preheatReady) return { ok: false, code: 'no-preheat', label: 'включите предпусковой подогрев ⑤' };
+    if (this.power < 10 && this.ekpCharge < 18) return { ok: false, code: 'no-charge', label: 'недостаточно заряда АКБ/ЭКП' };
+    return { ok: true, code: 'ready', label: 'готов к пуску' };
   }
 
   preheatEngine() {
@@ -264,7 +281,7 @@ export class Sim {
   }
 
   get engineReady() {
-    return this.busPowered && this.fuelValve && this.oilPressure >= 0.55 && this.preheatReady && !this.engineFault;
+    return this.getEngineStartStatus().ok;
   }
 
   quickStartEngine() {
@@ -280,12 +297,13 @@ export class Sim {
   }
 
   startEngine() {
-    if (this.engineFault) return 'fault';
-    if (!this.busPowered) return 'no-bus';
-    if (!this.fuelValve) return 'no-fuel';
-    if (this.oilPressure < 0.55) return 'no-oil';
-    if (!this.preheatReady) return 'no-preheat';
-    if (this.engineState === 'on' || this.engineState === 'starting') return 'already';
+    const status = this.getEngineStartStatus();
+    if (!status.ok) {
+      if (status.code === 'already-on' || status.code === 'already-starting') return 'already';
+      if (status.code === 'no-breaker') return 'no-breaker';
+      if (status.code === 'no-oil-prime') return 'no-oil';
+      return status.code.replace(/^no-/, 'no-');
+    }
     if (this.power < 10) {
       if (this.ekpCharge >= 18) {
         this.ekpCharge = Math.max(0, this.ekpCharge - 18);
@@ -357,7 +375,11 @@ export class Sim {
 
     // масло не держится вечно: после запуска поддерживается насосом, до запуска давление медленно падает
     if (this.engineOn) this.oilPressure = Math.min(1, this.oilPressure + 0.08 * dt);
-    else this.oilPressure = Math.max(0, this.oilPressure - (this.engineState === 'starting' ? 0.01 : 0.018) * dt);
+    else {
+      const oilBleed = this.busPowered && this.fuelValve ? 0.004 : 0.018;
+      this.oilPressure = Math.max(0, this.oilPressure - (this.engineState === 'starting' ? 0.006 : oilBleed) * dt);
+      if (this.oilPressure < 0.35 && this.engineState === 'off') this.oilPrimed = false;
+    }
     if (this.oilPressure < 0.35 && this.engineOn && Math.abs(this.throttle) > 0.55) {
       this.engineFault = 'LOW_OIL';
       this.stopEngine();

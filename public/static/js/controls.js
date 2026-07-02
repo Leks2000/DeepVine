@@ -296,6 +296,10 @@ function makeIndicator(x, y, z, { label, rotY = 0 }) {
 }
 
 // ---------- ЭЛЕКТРОЩИТ: центральная панель (нижний машинный отсек) ----------
+function engineStartHint(sim) {
+  return sim.getEngineStartStatus?.().label || 'выполните чеклист ①→⑥';
+}
+
 function makeEnginePanel(sim) {
   // Панель лицом к проходу (игрок смотрит с носа, кнопки на −Z)
   const cx = 0, cz = 16.12;
@@ -360,14 +364,14 @@ function makeEnginePanel(sim) {
   makeButton(cx - 0.35, cy - 0.48, cz, {
     label: '⑤ ПРЕДПУСКОВОЙ ПОДОГРЕВ', rotY: face,
     color: MAT.yellow,
-    canUse: () => sim.busPowered && sim.fuelValve && sim.oilPressure >= 0.55,
     onPress() {
       const r = sim.preheatEngine();
       if (r === 'ok') {
         G.sfx.buttonOk();
         preheatLed.setState('on');
         G.hud.log('♨ Подогрев готов. Теперь: ПУСК ДВИГАТЕЛЯ.', 'ok');
-      } else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину (②)!');
+      } else if (r === 'no-breaker') G.hud.hintFlash('Сначала включите главный рубильник (①)!');
+      else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину (②)!');
       else if (r === 'no-fuel') G.hud.hintFlash('Откройте топливный кран (③)!');
       else if (r === 'no-oil') G.hud.hintFlash('Поднимите давление масла маслопомпой (④)!');
       else G.hud.hintFlash('Недостаточно заряда для подогрева.');
@@ -377,20 +381,20 @@ function makeEnginePanel(sim) {
   makeButton(cx - 0.35, cy - 0.78, cz, {
     label: '⑥ ПУСК ДВИГАТЕЛЯ', rotY: face,
     color: MAT.green,
-    canUse: () => sim.engineReady && sim.engineState === 'off',
     onPress() {
       const r = sim.startEngine();
       if (r === 'ok') {
         G.sfx.engineCrank();
         engineLed.setState('warn');
         G.hud.log('🔧 Стартер крутит: масло/топливо/подогрев в норме… (~3 сек)', '');
-      } else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину (②)!');
+      } else if (r === 'no-breaker') G.hud.hintFlash('Сначала включите главный рубильник (①)!');
+      else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину (②)!');
       else if (r === 'no-fuel') G.hud.hintFlash('Откройте топливный кран (③)!');
       else if (r === 'no-oil') G.hud.hintFlash('Поднимите давление масла (④)!');
       else if (r === 'no-preheat') G.hud.hintFlash('Включите предпусковой подогрев (⑤)!');
       else if (r === 'fault') G.hud.hintFlash('Есть аварийная блокировка — сбросьте АВАРИЯ RESET.');
       else if (r === 'no-charge') G.hud.hintFlash('Недостаточно заряда!');
-      else G.hud.hintFlash('Двигатель уже работает.');
+      else G.hud.hintFlash(`Пуск невозможен: ${engineStartHint(sim)}.`);
     },
   });
 
@@ -683,18 +687,19 @@ export function buildControls() {
 
   makeButton(-2.45, 1.0, -9.1, {
     label: 'ПУСК ДВИГАТЕЛЯ (мостик)', rotY: Math.PI / 2, color: MAT.green,
-    canUse: () => sim.engineReady && sim.engineState === 'off',
     onPress() {
       const r = sim.startEngine();
       if (r === 'ok') {
         G.sfx.engineCrank();
         G.hud.log('🔧 Дублирующий пуск: двигатель запускается.', 'ok');
-      } else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину в машинном отсеке.');
+      } else if (r === 'no-breaker') G.hud.hintFlash('В машинном отсеке включите главный рубильник.');
+      else if (r === 'no-bus') G.hud.hintFlash('Сначала подайте питание на шину в машинном отсеке.');
       else if (r === 'no-fuel') G.hud.hintFlash('В машинном отсеке откройте топливный кран.');
       else if (r === 'no-oil') G.hud.hintFlash('В машинном отсеке поднимите давление масла.');
       else if (r === 'no-preheat') G.hud.hintFlash('Выполните предпусковой подогрев в машинном отсеке.');
       else if (r === 'fault') G.hud.hintFlash('Сначала сбросьте аварийную блокировку двигателя.');
       else if (r === 'no-charge') G.hud.hintFlash('Недостаточно энергии АКБ/ЭКП для запуска.');
+      else G.hud.hintFlash(`Пуск невозможен: ${engineStartHint(sim)}.`);
     },
   });
 
