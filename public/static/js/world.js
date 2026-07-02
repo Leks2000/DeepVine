@@ -47,6 +47,8 @@ function buildMaterials() {
   MAT.ivory = new THREE.MeshStandardMaterial({ color: 0xc8bfa6, metalness: 0.25, roughness: 0.55 });
   MAT.copper = new THREE.MeshStandardMaterial({ color: 0x9b5a2e, metalness: 0.86, roughness: 0.34 });
   MAT.routeGlow = new THREE.MeshStandardMaterial({ color: 0x80d8ff, emissive: 0x00e5ff, emissiveIntensity: 0.65, transparent: true, opacity: 0.78 });
+  MAT.deckGrate = new THREE.MeshStandardMaterial({ color: 0x26343b, metalness: 0.85, roughness: 0.38 });
+  MAT.hullBlack = new THREE.MeshStandardMaterial({ color: 0x111820, metalness: 0.75, roughness: 0.48 });
 }
 
 
@@ -82,6 +84,30 @@ function torus(r, tube, mat, x, y, z, parent, rotX = 0, rotY = 0, rotZ = 0) {
   m.rotation.set(rotX, rotY, rotZ);
   (parent || G.scene).add(m);
   return m;
+}
+
+function addLowerDeckDetail({ z0, z1, label, ladderX }) {
+  const zc = (z0 + z1) / 2;
+  const len = z1 - z0;
+  box(HULL.w - 0.35, 0.1, len, MAT.dark, 0, -0.02, zc);
+  box(HULL.w - 0.65, 0.055, len - 0.4, MAT.deckGrate, 0, -0.94, zc);
+  for (let z = z0 + 0.65; z < z1 - 0.2; z += 0.75) {
+    box(HULL.w - 0.85, 0.018, 0.035, MAT.brass, 0, -0.885, z);
+  }
+  for (const sx of [-1, 1]) {
+    cyl(0.045, len - 0.4, MAT.pipe2, sx * 2.35, -0.2, zc, null, 0, Math.PI / 2);
+    cyl(0.035, len - 0.6, MAT.pipe, sx * 2.05, -0.78, zc, null, 0, Math.PI / 2);
+    for (let z = z0 + 1.0; z < z1; z += 1.65) {
+      torus(0.18, 0.018, MAT.brass, sx * 2.72, -0.5, z, null, Math.PI / 2, 0, 0);
+    }
+  }
+  box(0.16, 1.0, len - 0.3, MAT.hullBlack, 0, -0.55, zc);
+  const hatchFrame = box(1.35, 0.06, 1.0, MAT.hazard, ladderX, -0.02, ladderX > 0 ? z1 - 0.65 : z0 + 1.0);
+  hatchFrame.rotation.y = ladderX > 0 ? -0.25 : 0.25;
+  const sign = makeSign(label, 1.45, 0.22, '#071016', '#80d8ff');
+  sign.position.set(0, -0.18, zc);
+  sign.rotation.x = -0.18;
+  G.scene.add(sign);
 }
 
 // ---------- ТЕКСТОВЫЕ ТАБЛИЧКИ (canvas) ----------
@@ -206,6 +232,7 @@ function buildHullInterior() {
     box(0.2, 1.0, tlen, MAT.hull, -w / 2 + 0.1, -0.55, tzc, null, true);
     box(0.2, 1.0, tlen, MAT.hull,  w / 2 - 0.1, -0.55, tzc, null, true);
     box(w, 0.12, 0.2, MAT.bulk, 0, -0.05, tz0 - 0.1, null, true);
+    addLowerDeckDetail({ z0: tz0, z1: tz1, label: 'LOWER TORPEDO DECK', ladderX: 2.05 });
     // лестница с мостика — теперь это читаемый маршрут с голубой подсветкой и без необходимости ловить пиксельную высоту
     for (let i = 0; i < 7; i++) {
       const step = box(0.86, 0.08, 0.36, MAT.brass, 2.05, 0.2 - i * 0.18, -10.15 - i * 0.34);
@@ -234,6 +261,7 @@ function buildHullInterior() {
     box(w - 0.4, 0.15, elen, MAT.floor, 0, -1.05, ezc);
     box(0.2, 1.0, elen, MAT.hull, -w / 2 + 0.1, -0.55, ezc, null, true);
     box(0.2, 1.0, elen, MAT.hull,  w / 2 - 0.1, -0.55, ezc, null, true);
+    addLowerDeckDetail({ z0: ez0, z1: ez1, label: 'LOWER ENGINE DECK', ladderX: -2.05 });
     // люк/лестница с верхней палубы — подсвеченный безопасный маршрут вниз к двигателю
     for (let i = 0; i < 7; i++) {
       const step = box(0.86, 0.08, 0.36, MAT.brass, -2.05, 0.18 - i * 0.18, ez0 + 0.25 + i * 0.34);
@@ -303,6 +331,17 @@ function buildHullInterior() {
     box(w - 0.05, 0.14, 0.1, MAT.dark, 0, h - 0.07, z);
     box(w - 0.05, 0.14, 0.1, MAT.dark, 0, 0.07, z);
   }
+
+  // внешний силуэт подлодки: носовой обтекатель, кормовая рубка/рули и выразительный корпус
+  const outer = new THREE.Mesh(new THREE.CylinderGeometry(HULL.w / 2 + 0.28, HULL.w / 2 + 0.28, len + 1.8, 32, 1, true), MAT.hullBlack);
+  outer.rotation.x = Math.PI / 2; outer.position.set(0, h / 2, zc + 0.2);
+  G.scene.add(outer);
+  cone(HULL.w / 2 + 0.28, 2.2, MAT.hullBlack, 0, h / 2, z0 - 1.2, null, -Math.PI / 2);
+  cone(HULL.w / 2 + 0.05, 2.6, MAT.hullBlack, 0, h / 2, z1 + 1.4, null, Math.PI / 2);
+  box(1.05, 1.2, 4.2, MAT.hullBlack, 0, h + 0.65, -5.5);
+  box(3.8, 0.08, 1.0, MAT.hullBlack, 0, h + 1.25, -5.5);
+  box(0.12, 1.35, 2.8, MAT.hullBlack, 0, h + 0.05, z1 + 1.2);
+  box(3.6, 0.12, 1.2, MAT.hullBlack, 0, h / 2, z1 + 2.0);
 
   // наружные трубы (по бортам, вдоль корпуса)
   cyl(0.06, len, MAT.pipe2, -w / 2 - 0.12, h * 0.6, zc, null, 0, Math.PI / 2);
@@ -1246,8 +1285,11 @@ export function updateWorld(t, dt) {
 }
 
 export function compartmentAt(z, y = 1.62) {
-  if (z >= -18 && z < -10 && y < 1.0) {
+  if (z >= -18 && z < -10 && y < 1.15) {
     return COMPARTMENTS.find(c => c.id === 'torpedo') || COMPARTMENTS[0];
+  }
+  if (z >= 14 && z < 22 && y < 1.15) {
+    return { id: 'lower-engine', name: 'НИЖНИЙ МАШИННЫЙ ОТСЕК' };
   }
   for (const c of COMPARTMENTS) {
     if (c.lowerDeck) continue;

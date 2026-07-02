@@ -5,6 +5,10 @@ import { spectatorMove } from './dev.js';
 
 const EYE_UPPER = 1.62;
 const EYE_LOWER = 0.95;
+const LOWER_DECKS = [
+  { id: 'torpedo', x0: -2.45, x1: 2.45, z0: -17.45, z1: -10.25, shaftX0: 0.95, shaftX1: 2.65, shaftZ0: -12.75, shaftZ1: -9.25 },
+  { id: 'engine', x0: -2.45, x1: 2.45, z0: 14.25, z1: 21.45, shaftX0: -2.65, shaftX1: -0.95, shaftZ0: 13.15, shaftZ1: 17.05 },
+];
 const RADIUS = 0.32;
 const WALK = 3.2, RUN = 5.4;
 
@@ -86,40 +90,39 @@ export class Player {
     if (G.held && G.held.drop) G.held.drop();
   }
 
-  _onLowerDeck() {
-    return this.pos.z >= -18 && this.pos.z < -10 && this.pos.y < 1.25;
+  _lowerDeckAt(pos = this.pos) {
+    if (pos.y >= 1.28) return null;
+    return LOWER_DECKS.find(d => pos.z >= d.z0 && pos.z <= d.z1) || null;
   }
 
-  _inLadderShaft() {
-    return (this.pos.x > 0.95 && this.pos.z > -12.4 && this.pos.z < -9.35)
-      || (this.pos.x < -0.95 && this.pos.z > 13.2 && this.pos.z < 16.9);
+  _onLowerDeck() {
+    return !!this._lowerDeckAt();
+  }
+
+  _inLadderShaft(pos = this.pos) {
+    return LOWER_DECKS.some(d => (
+      pos.x >= d.shaftX0 && pos.x <= d.shaftX1 &&
+      pos.z >= d.shaftZ0 && pos.z <= d.shaftZ1
+    ));
   }
 
   _preventLowerDeckStuck() {
-    // Нижняя палуба низкая и связана телепорт-площадками: мягко удерживаем игрока в свободном коридоре,
-    // а если он вышел из шахты лестницы на нижней высоте — поднимаем на обычную палубу.
-    if (this.pos.y < 1.25 && this.pos.z >= -18 && this.pos.z < -10) {
-      this.pos.x = Math.max(-2.35, Math.min(2.35, this.pos.x));
-      this.pos.z = Math.max(-17.35, Math.min(-10.35, this.pos.z));
-    } else if (this.pos.y < 1.25 && this.pos.z >= 14 && this.pos.z < 22) {
-      this.pos.x = Math.max(-2.35, Math.min(2.35, this.pos.x));
-      this.pos.z = Math.max(14.35, Math.min(21.35, this.pos.z));
-    }
+    // Нижние палубы — полноценные зоны, а не «пиксельные» лестничные ловушки:
+    // удерживаем игрока в проходе и не поднимаем обратно, пока он находится в нижнем отсеке.
+    const deck = this._lowerDeckAt();
+    if (!deck) return;
+    this.pos.x = Math.max(deck.x0, Math.min(deck.x1, this.pos.x));
+    this.pos.z = Math.max(deck.z0, Math.min(deck.z1, this.pos.z));
   }
 
   _updateLadder(dt) {
-    // лестница → торпедный отсек (нос)
-    if (this.pos.x > 1.0 && this.pos.z > -11.8 && this.pos.z < -9.5) {
+    // Лестницы дополнительно поддерживают ручной подъём/спуск W/S, но основные переходы теперь через E-площадки.
+    if (this._inLadderShaft()) {
       if (this.keys['KeyS']) this.pos.y = Math.max(EYE_LOWER, this.pos.y - dt * 2.5);
       if (this.keys['KeyW']) this.pos.y = Math.min(EYE_UPPER, this.pos.y + dt * 2.5);
     }
-    // лестница → машинный отсек (корма)
-    if (this.pos.x < -1.0 && this.pos.z > 13.5 && this.pos.z < 16.5) {
-      if (this.keys['KeyS']) this.pos.y = Math.max(EYE_LOWER, this.pos.y - dt * 2.5);
-      if (this.keys['KeyW']) this.pos.y = Math.min(EYE_UPPER, this.pos.y + dt * 2.5);
-    }
-    // плавный переход высоты без дёрганья; вне шахты нижний уровень сам возвращает игрока вверх
-    const onLower = this._onLowerDeck() || this._onLowerEngine();
+    // плавный переход высоты без дёрганья; вне нижнего отсека уровень сам возвращает игрока вверх
+    const onLower = this._onLowerDeck();
     const inShaft = this._inLadderShaft();
     if (onLower && this.pos.y < 1.2) {
       this.pos.y += (EYE_LOWER - this.pos.y) * Math.min(1, dt * 12);
@@ -129,10 +132,6 @@ export class Player {
       this.pos.y += (EYE_UPPER - this.pos.y) * Math.min(1, dt * 12);
     }
     this._preventLowerDeckStuck();
-  }
-
-  _onLowerEngine() {
-    return this.pos.z >= 14 && this.pos.z < 22 && this.pos.y < 1.25;
   }
 
   update(dt) {
@@ -160,7 +159,8 @@ export class Player {
       // скольжение вдоль стен: проверяем X и Z отдельно
       const newX = this.pos.x + move.x;
       const newZ = this.pos.z + move.z;
-      const feet = this.pos.y - 1.62;
+      const eyeHeight = this.pos.y < 1.28 ? EYE_LOWER : EYE_UPPER;
+      const feet = this.pos.y - eyeHeight;
       const bodyTop = this.pos.y + 0.1;
       let canX = true, canZ = true;
       for (const c of G.colliders) {
@@ -212,7 +212,8 @@ export class Player {
     if (d === 0) return;
     const p = this.pos.clone();
     if (axis === 0) p.x += d; else p.z += d;
-    const feet = p.y - 1.62;
+    const eyeHeight = p.y < 1.28 ? EYE_LOWER : EYE_UPPER;
+    const feet = p.y - eyeHeight;
     for (const c of G.colliders) {
       const bodyTop = p.y + 0.1;
       if (p.x + RADIUS > c.min.x && p.x - RADIUS < c.max.x &&
